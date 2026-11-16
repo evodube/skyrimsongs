@@ -1327,6 +1327,35 @@ namespace Performance
 		}
 
 		// ------------------------------------------------------------------------------------------ start / stop
+		// The hotkey is a key's place on the keyboard (a scan code). The default, 0x2B, is \ on a US keyboard; on a UK
+		// or other ISO keyboard \ is the key beside left Shift (0x56) and 0x2B is #. So while the hotkey is left at
+		// its default, the key that types \ on this keyboard's layout works too.
+		int g_layoutHotkey = -1;
+
+		void FindLayoutHotkey()
+		{
+			g_layoutHotkey = -1;
+			const HKL   layout = ::GetKeyboardLayout(0);
+			const SHORT vks = ::VkKeyScanExW(L'\\', layout);
+			if (vks == -1 || (vks >> 8) != 0) {
+				spdlog::info("Keyboard layout {:08X}: \\ needs a modifier (or isn't there); the hotkey is the key at 0x{:X}",
+					static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(layout)), Config::Get().hotkey);
+				return;
+			}
+			const UINT sc = ::MapVirtualKeyExW(static_cast<UINT>(vks & 0xFF), MAPVK_VK_TO_VSC, layout);
+			if (sc && static_cast<int>(sc) != 0x2B) {
+				g_layoutHotkey = static_cast<int>(sc);
+			}
+			spdlog::info("Keyboard layout {:08X}: \\ is the key at 0x{:X}{}", static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(layout)), sc,
+				g_layoutHotkey > 0 ? " (taken as the hotkey too, as it's left at its default)" : "");
+		}
+
+		bool IsHotkey(int a_scan)
+		{
+			const int hk = Config::Get().hotkey;
+			return a_scan == hk || (hk == 0x2B && g_layoutHotkey > 0 && a_scan == g_layoutHotkey);
+		}
+
 		bool BlockedByUi()
 		{
 			auto* ui = RE::UI::GetSingleton();
@@ -1592,10 +1621,18 @@ namespace Performance
 		void Begin()
 		{
 			if (BlockedByUi()) {
+				auto*      cm = RE::ControlMap::GetSingleton();
+				const bool controls = cm && (cm->GetRuntimeData().textEntryCount > 0 || !cm->IsMovementControlsEnabled());
+				spdlog::info("Hotkey: not now ({})", controls ? "the game has your movement controls switched off, or a text box is open" :
+				                                                 "a menu is open or the game is paused");
+				if (controls) {
+					Hud("You can't take out an instrument right now.");
+				}
 				return;
 			}
 			const auto why = CantPlay();
 			if (!why.empty()) {
+				spdlog::info("Hotkey: not now ({})", why == "-" ? "the player isn't ready" : why);
 				if (why != "-") {
 					Hud(why);
 				}
@@ -2513,6 +2550,7 @@ namespace Performance
 	// ============================================================================================== public
 	void OnDataLoaded()
 	{
+		FindLayoutHotkey();
 		auto* dh = RE::TESDataHandler::GetSingleton();
 		g_gold = RE::TESForm::LookupByID<RE::TESBoundObject>(kGold);
 		g_innkeepers = RE::TESForm::LookupByID<RE::TESFaction>(kInnkeeperFaction);
@@ -2598,7 +2636,8 @@ namespace Performance
 
 	void OnHotkey(int a_scan)
 	{
-		if (a_scan == Config::Get().hotkey) {
+		if (IsHotkey(a_scan)) {
+			spdlog::info("Hotkey pressed (0x{:X})", a_scan);
 			g_wantStart = true;
 		}
 	}
@@ -2622,7 +2661,7 @@ namespace Performance
 			if (!a_down) {
 				return;
 			}
-			if (a_scan == 0x01 || a_scan == Config::Get().hotkey) {  // Esc or the hotkey closes the songbook
+			if (a_scan == 0x01 || IsHotkey(a_scan)) {  // Esc or the hotkey closes the songbook
 				Overlay::SetMode(Overlay::Mode::Playing);
 			} else if (a_scan == 0x0E) {  // Backspace: the search
 				if (!g_search.empty()) {
@@ -2662,7 +2701,7 @@ namespace Performance
 			return;
 		}
 		// the rest (key down). While you play, every other key is swallowed: the hotkey or Esc gets you out.
-		if (a_scan == Config::Get().hotkey) {
+		if (IsHotkey(a_scan)) {
 			Stop("hotkey");
 			return;
 		}
