@@ -110,6 +110,61 @@ namespace
 		return true;
 	}
 
+	// ------------------------------------------------------------------ the frame hook (preferred)
+	// The game's own end of frame (BSGraphics::Renderer::End, the call at +0x9), the place other interface mods hook.
+	// Hooking DXGI's Present through the swap chain's vtable is never reached when something else (Community Shaders,
+	// for one) takes over Present, and then nothing of this mod ran at all.
+	using EndFn = void (*)(std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t);
+	EndFn             g_originalEnd = nullptr;
+	std::atomic<bool> g_framesSeen{ false };
+
+	IDXGISwapChain* GameSwapChain()
+	{
+		auto* renderer = RE::BSGraphics::Renderer::GetSingleton();
+		return renderer ? reinterpret_cast<IDXGISwapChain*>(renderer->GetRuntimeData().renderWindows[0].swapChain) : nullptr;
+	}
+
+	void OnFrame()
+	{
+		if (!g_framesSeen.exchange(true)) {
+			spdlog::info("Frame hook running");
+		}
+		if (!g_tickDisabled && !g_tickQueued.exchange(true)) {
+			SKSE::GetTaskInterface()->AddTask([] {
+				g_tickQueued = false;
+				if (!g_tickDisabled) {
+					SafeTick();
+				}
+			});
+		}
+		if (!g_presentDisabled) {
+			if (auto* sc = GameSwapChain()) {
+				SafeOnPresent(sc);
+			}
+		}
+	}
+
+	void HookedEnd(std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t a3, std::uintptr_t a4)
+	{
+		g_originalEnd(a1, a2, a3, a4);
+		OnFrame();
+	}
+
+	bool SafeInstallFrameHook()
+	{
+		__try {
+			REL::Relocation<std::uintptr_t> target{ RELOCATION_ID(75461, 77246), 0x9 };
+			if (*reinterpret_cast<const std::uint8_t*>(target.address()) != 0xE8) {
+				spdlog::warn("Frame hook: the game's code isn't what was expected at {:X}", target.address());
+				return false;
+			}
+			g_originalEnd = reinterpret_cast<EndFn>(SKSE::GetTrampoline().write_call<5>(target.address(), &HookedEnd));
+			return g_originalEnd != nullptr;
+		} __except (Overlay::SehFilter(GetExceptionInformation(), "InstallFrameHook")) {
+			return false;
+		}
+	}
+
 	bool SafeInstallPresentHook()
 	{
 		__try {
@@ -129,10 +184,12 @@ namespace
 			break;
 		case SKSE::MessagingInterface::kDataLoaded:
 			Performance::OnDataLoaded();
-			if (SafeInstallPresentHook()) {
-				spdlog::info("Present hook installed");
+			if (SafeInstallFrameHook()) {
+				spdlog::info("Frame hook installed (the game's end of frame)");
+			} else if (SafeInstallPresentHook()) {
+				spdlog::info("Present hook installed (the swap chain's; the frame hook couldn't go in)");
 			} else {
-				spdlog::error("Could not install the Present hook - the instrument's interface will not appear");
+				spdlog::error("Could not hook the game's frame - the instrument's interface will not appear");
 			}
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
