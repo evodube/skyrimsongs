@@ -1,0 +1,21 @@
+
+  CommonLibSSE.vcxproj -> D:\a\skyrimsongs\skyrimsongs\build\extern\CommonLibSSE-NG\Release\CommonLibSSE.lib
+  cmake_pch.cxx
+  __SkyrimSongsPlugin.cpp
+  Audio.cpp
+  Config.cpp
+  InstrumentHud.cpp
+  Menu.cpp
+  MidiIn.cpp
+  Overlay.cpp
+  Performance.cpp
+  main.cpp
+  Generating Code...
+  Crowd.cpp
+  Judge.cpp
+  Midi.cpp
+  Songs.cpp
+  Synth.cpp
+  Generating Code...
+     Creating library D:/a/skyrimsongs/skyrimsongs/build/Release/SkyrimSongs.lib and object D:/a/skyrimsongs/skyrimsongs/build/Release/SkyrimSongs.exp
+  SkyrimSongs.vcxproj -> D:\a\skyrimsongs\skyrimsongs\build\Release\SkyrimSongs.dll
