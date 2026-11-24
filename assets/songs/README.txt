@@ -5,8 +5,7 @@ The crowd won't know.
 
 Drum parts (MIDI channel 10) are left out.
 
-Songs that come with SkyrimSongs (each arranged for one bard: the tune, a bass and the chords, played through twice;
-Simple in the songbook plays just the tune and the bass):
+Songs that come with SkyrimSongs (each arranged for one bard: the tune, a bass and the chords, played through twice):
   - Scarborough Fair, Greensleeves, Drunken Sailor, Amazing Grace, Auld Lang Syne (traditional)
   - Ode to Joy (Beethoven)
   - The Whiterun Jig, A Night at the Sleeping Giant (written for SkyrimSongs)
