@@ -104,6 +104,13 @@ namespace Overlay
 				const auto dev = e->GetDevice();
 				if (mode == Mode::Closed) {
 					if (dev == RE::INPUT_DEVICE::kKeyboard && down) {
+						// the first few keys each session are logged, so "the hotkey does nothing" can be told apart from
+						// "no keys reach the mod"
+						static int s_logged = 0;
+						if (s_logged < 6 && !Config::Get().logInput) {
+							++s_logged;
+							spdlog::info("[input] key 0x{:X} down (the hotkey is 0x{:X})", code, Config::Get().hotkey);
+						}
 						Performance::OnHotkey(code);
 					}
 					continue;
@@ -166,7 +173,9 @@ namespace Overlay
 				return;
 			}
 			if (a_events && *a_events) {
-				g_hookInputAt = NowMs();
+				if (g_hookInputAt.exchange(NowMs()) == 0) {
+					spdlog::info("Input hook: events arriving");
+				}
 			}
 			if (!g_inputDisabled) {
 				SafeHandleInput(a_events);
