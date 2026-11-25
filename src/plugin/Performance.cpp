@@ -454,7 +454,8 @@ namespace Performance
 						g_checks = 0;
 					}
 				} else if (g_checking >= 0 && g_held == g_checking) {
-					if (last == nullptr || last == g_stopIdle) {
+					// (on some game versions the last idle always reads as none: only a put-away still showing is a sure miss)
+					if (last == g_stopIdle) {
 						spdlog::info("The {} idle didn't take (last idle: {}); again", g_checking == 0 ? "lute" : "flute", IdleName(last));
 						if (++g_checks <= 3) {
 							g_held = -1;  // not out after all: take it out again

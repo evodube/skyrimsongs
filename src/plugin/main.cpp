@@ -77,9 +77,22 @@ namespace
 		}
 	}
 
+	// Where the interface is drawn: in Present when it's reached (the last moment before the frame is shown, after
+	// ENB and upscalers have composited theirs: drawn any earlier, ENB covers it), else at the game's end of frame
+	// (Community Shaders takes Present over, and the swap chain's slot is never called).
+	std::atomic<std::int64_t> g_presentAt{ 0 };
+	std::atomic<bool>         g_frameHooked{ false };
+	std::int64_t              NowMs()
+	{
+		return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+	}
+
 	HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* a_sc, UINT a_sync, UINT a_flags)
 	{
-		if (!g_tickDisabled && !g_tickQueued.exchange(true)) {
+		if (g_presentAt.exchange(NowMs()) == 0) {
+			spdlog::info("Present hook running: the interface is drawn there");
+		}
+		if (!g_frameHooked && !g_tickDisabled && !g_tickQueued.exchange(true)) {
 			SKSE::GetTaskInterface()->AddTask([] {
 				g_tickQueued = false;
 				if (!g_tickDisabled) {
@@ -137,7 +150,13 @@ namespace
 				}
 			});
 		}
-		if (!g_presentDisabled) {
+		// draw here only while Present isn't being reached
+		if (!g_presentDisabled && NowMs() - g_presentAt.load() > 250) {
+			static bool s_said = false;
+			if (!s_said && g_presentAt.load() == 0) {
+				s_said = true;
+				spdlog::info("Drawing at the end of frame (Present isn't reached yet)");
+			}
 			if (auto* sc = GameSwapChain()) {
 				SafeOnPresent(sc);
 			}
@@ -184,12 +203,14 @@ namespace
 			break;
 		case SKSE::MessagingInterface::kDataLoaded:
 			Performance::OnDataLoaded();
-			if (SafeInstallFrameHook()) {
-				spdlog::info("Frame hook installed (the game's end of frame)");
-			} else if (SafeInstallPresentHook()) {
-				spdlog::info("Present hook installed (the swap chain's; the frame hook couldn't go in)");
-			} else {
-				spdlog::error("Could not hook the game's frame - the instrument's interface will not appear");
+			{
+				const bool frame = SafeInstallFrameHook();
+				g_frameHooked = frame;
+				const bool present = SafeInstallPresentHook();
+				spdlog::info("Hooks: end of frame {}, Present {}", frame ? "in" : "FAILED", present ? "in" : "FAILED");
+				if (!frame && !present) {
+					spdlog::error("Could not hook the game's frame - the instrument's interface will not appear");
+				}
 			}
 			break;
 		case SKSE::MessagingInterface::kPostLoadGame:
