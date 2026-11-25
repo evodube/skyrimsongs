@@ -357,8 +357,8 @@ namespace Overlay
 			if (FAILED(sc->GetDesc(&desc)) || !desc.OutputWindow || (s_window && desc.OutputWindow != s_window)) {
 				return;
 			}
-			ID3D11Device* dev = nullptr;
-			if (FAILED(sc->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&dev))) || !dev) {
+			ID3D11Device* scDev = nullptr;
+			if (FAILED(sc->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&scDev))) || !scDev) {
 				static bool s_said = false;
 				if (!s_said) {
 					s_said = true;
@@ -366,11 +366,31 @@ namespace Overlay
 				}
 				return;
 			}
+			// Draw with the game's own device and context, as the game (and other interface mods) do. With ENB the
+			// swap chain hands back the device under ENB's wrapper; drawing on that goes past ENB, which then covers it.
+			ID3D11Device*        dev = scDev;
+			ID3D11DeviceContext* gameCtx = nullptr;
+			if (auto* renderer = RE::BSGraphics::Renderer::GetSingleton()) {
+				auto& rd = renderer->GetRuntimeData();
+				if (rd.forwarder && rd.context) {
+					dev = reinterpret_cast<ID3D11Device*>(rd.forwarder);
+					gameCtx = reinterpret_cast<ID3D11DeviceContext*>(rd.context);
+					dev->AddRef();
+					scDev->Release();
+				}
+			}
+			const bool wrapped = gameCtx && reinterpret_cast<void*>(dev) != reinterpret_cast<void*>(scDev);
 			if (!g_sc) {
 				g_dev = dev;
-				g_dev->GetImmediateContext(&g_ctx);
-				spdlog::info("Attached to the game's swap chain ({}x{}, format {})", desc.BufferDesc.Width, desc.BufferDesc.Height,
-					static_cast<int>(desc.BufferDesc.Format));
+				if (gameCtx) {
+					g_ctx = gameCtx;
+					g_ctx->AddRef();
+				} else {
+					g_dev->GetImmediateContext(&g_ctx);
+				}
+				spdlog::info("Attached to the game's swap chain ({}x{}, format {}), drawing with {}{}", desc.BufferDesc.Width, desc.BufferDesc.Height,
+					static_cast<int>(desc.BufferDesc.Format), gameCtx ? "the game's device" : "the swap chain's device",
+					wrapped ? " (the swap chain's is another: ENB or a proxy is in between)" : "");
 			} else {
 				static int s_changes = 0;
 				if (++s_changes <= 5) {
@@ -386,7 +406,12 @@ namespace Overlay
 					}
 					g_dev->Release();
 					g_dev = dev;
-					g_dev->GetImmediateContext(&g_ctx);
+					if (gameCtx) {
+						g_ctx = gameCtx;
+						g_ctx->AddRef();
+					} else {
+						g_dev->GetImmediateContext(&g_ctx);
+					}
 					if (g_imguiReady && (!ImGui_ImplDX11_Init(g_dev, g_ctx) || !ImGui_ImplDX11_CreateDeviceObjects())) {
 						g_imguiFailed = true;
 						spdlog::error("ImGui failed to move to the new device");
