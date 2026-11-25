@@ -54,7 +54,10 @@ namespace
 
 	// ------------------------------------------------------------------ Present hook (as in Hearthsworn and Yacht)
 	using PresentFn = HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain*, UINT, UINT);
-	PresentFn         g_originalPresent = nullptr;
+	// each swap chain class's own Present (an upscaler's swap chain is another class from the game's)
+	std::mutex                         g_presentMtx;
+	std::map<void**, PresentFn>        g_originals;
+	PresentFn                          g_originalPresent = nullptr;  // the first one hooked
 	std::atomic<bool> g_presentDisabled{ false };
 	std::atomic<bool> g_tickDisabled{ false };
 	std::atomic<bool> g_tickQueued{ false };
@@ -103,21 +106,32 @@ namespace
 		if (!g_presentDisabled) {
 			SafeOnPresent(a_sc);
 		}
-		return g_originalPresent(a_sc, a_sync, a_flags);
+		PresentFn orig = g_originalPresent;
+		{
+			std::lock_guard lk(g_presentMtx);
+			if (auto it = g_originals.find(*reinterpret_cast<void***>(a_sc)); it != g_originals.end()) {
+				orig = it->second;
+			}
+		}
+		return orig(a_sc, a_sync, a_flags);
 	}
 
 	bool PatchPresentSlot(IDXGISwapChain* a_sc)
 	{
-		auto** vtable = *reinterpret_cast<void***>(a_sc);
-		if (vtable[8] == reinterpret_cast<void*>(&HookedPresent)) {
-			return true;
+		auto**          vtable = *reinterpret_cast<void***>(a_sc);
+		std::lock_guard lk(g_presentMtx);
+		if (vtable[8] == reinterpret_cast<void*>(&HookedPresent) || g_originals.contains(vtable)) {
+			return true;  // hooked already (maybe with another mod's hook in front of ours: leave the chain as it is)
 		}
 		DWORD old = 0;
 		if (!::VirtualProtect(&vtable[8], sizeof(void*), PAGE_EXECUTE_READWRITE, &old)) {
 			spdlog::error("VirtualProtect failed ({})", ::GetLastError());
 			return false;
 		}
-		g_originalPresent = reinterpret_cast<PresentFn>(vtable[8]);
+		g_originals[vtable] = reinterpret_cast<PresentFn>(vtable[8]);
+		if (!g_originalPresent) {
+			g_originalPresent = reinterpret_cast<PresentFn>(vtable[8]);
+		}
 		vtable[8] = reinterpret_cast<void*>(&HookedPresent);
 		::VirtualProtect(&vtable[8], sizeof(void*), old, &old);
 		return true;
@@ -137,10 +151,23 @@ namespace
 		return renderer ? reinterpret_cast<IDXGISwapChain*>(renderer->GetRuntimeData().renderWindows[0].swapChain) : nullptr;
 	}
 
+	bool SafePatch(IDXGISwapChain* a_sc);
+
 	void OnFrame()
 	{
 		if (!g_framesSeen.exchange(true)) {
 			spdlog::info("Frame hook running");
+		}
+		// a swap chain put in place of the game's (an upscaler, frame generation): hook its Present too
+		{
+			static IDXGISwapChain* s_last = nullptr;
+			if (auto* sc = GameSwapChain(); sc && sc != s_last) {
+				if (s_last) {
+					spdlog::info("The game's swap chain was replaced; hooking the new one");
+				}
+				s_last = sc;
+				SafePatch(sc);
+			}
 		}
 		if (!g_tickDisabled && !g_tickQueued.exchange(true)) {
 			SKSE::GetTaskInterface()->AddTask([] {
@@ -180,6 +207,15 @@ namespace
 			g_originalEnd = reinterpret_cast<EndFn>(SKSE::GetTrampoline().write_call<5>(target.address(), &HookedEnd));
 			return g_originalEnd != nullptr;
 		} __except (Overlay::SehFilter(GetExceptionInformation(), "InstallFrameHook")) {
+			return false;
+		}
+	}
+
+	bool SafePatch(IDXGISwapChain* a_sc)
+	{
+		__try {
+			return PatchPresentSlot(a_sc);
+		} __except (Overlay::SehFilter(GetExceptionInformation(), "PatchPresent")) {
 			return false;
 		}
 	}

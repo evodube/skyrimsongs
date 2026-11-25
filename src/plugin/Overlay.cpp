@@ -349,21 +349,58 @@ namespace Overlay
 
 	void OnPresent(IDXGISwapChain* sc)
 	{
-		if (!g_sc) {
+		if (sc != g_sc) {
+			// the first swap chain, or a new one: an upscaler or frame generation can put its own in place of the
+			// game's. Follow the one that's presenting (on the game's window), or the interface goes where nobody sees.
+			static HWND s_window = nullptr;
 			DXGI_SWAP_CHAIN_DESC desc{};
-			if (FAILED(sc->GetDesc(&desc)) || !desc.OutputWindow) {
+			if (FAILED(sc->GetDesc(&desc)) || !desc.OutputWindow || (s_window && desc.OutputWindow != s_window)) {
 				return;
 			}
-			if (FAILED(sc->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&g_dev))) || !g_dev) {
+			ID3D11Device* dev = nullptr;
+			if (FAILED(sc->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&dev))) || !dev) {
+				static bool s_said = false;
+				if (!s_said) {
+					s_said = true;
+					spdlog::warn("A swap chain without a Direct3D 11 device presents; not drawing on it");
+				}
 				return;
 			}
-			g_dev->GetImmediateContext(&g_ctx);
+			if (!g_sc) {
+				g_dev = dev;
+				g_dev->GetImmediateContext(&g_ctx);
+				spdlog::info("Attached to the game's swap chain ({}x{}, format {})", desc.BufferDesc.Width, desc.BufferDesc.Height,
+					static_cast<int>(desc.BufferDesc.Format));
+			} else {
+				static int s_changes = 0;
+				if (++s_changes <= 5) {
+					spdlog::info("The swap chain changed ({}x{}, format {}{}): drawing on the new one", desc.BufferDesc.Width, desc.BufferDesc.Height,
+						static_cast<int>(desc.BufferDesc.Format), dev != g_dev ? ", another device" : "");
+				}
+				if (dev != g_dev) {
+					if (g_imguiReady) {
+						ImGui_ImplDX11_Shutdown();
+					}
+					if (g_ctx) {
+						g_ctx->Release();
+					}
+					g_dev->Release();
+					g_dev = dev;
+					g_dev->GetImmediateContext(&g_ctx);
+					if (g_imguiReady && (!ImGui_ImplDX11_Init(g_dev, g_ctx) || !ImGui_ImplDX11_CreateDeviceObjects())) {
+						g_imguiFailed = true;
+						spdlog::error("ImGui failed to move to the new device");
+					}
+				} else {
+					dev->Release();
+				}
+			}
+			s_window = desc.OutputWindow;
 			g_sc = sc;
 			g_screenW = static_cast<float>(desc.BufferDesc.Width);
 			g_screenH = static_cast<float>(desc.BufferDesc.Height);
-			spdlog::info("Attached to the game's swap chain ({}x{})", desc.BufferDesc.Width, desc.BufferDesc.Height);
 		}
-		if (sc != g_sc || g_mode.load() == Mode::Closed) {
+		if (g_mode.load() == Mode::Closed) {
 			return;
 		}
 		if (!g_imguiReady && !g_imguiFailed) {
@@ -380,6 +417,11 @@ namespace Overlay
 
 		ID3D11Texture2D* back = nullptr;
 		if (FAILED(sc->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&back))) || !back) {
+			static bool s_said = false;
+			if (!s_said) {
+				s_said = true;
+				spdlog::warn("Can't get the swap chain's back buffer; the interface can't be drawn");
+			}
 			return;
 		}
 		D3D11_TEXTURE2D_DESC bd{};
@@ -431,13 +473,64 @@ namespace Overlay
 		Performance::DrawUi();
 		ImGui::Render();
 
+		// a "typeless" back buffer (upscalers and frame generation use them) needs the format named for a view
+		D3D11_RENDER_TARGET_VIEW_DESC  rd{};
+		D3D11_RENDER_TARGET_VIEW_DESC* prd = nullptr;
+		{
+			DXGI_FORMAT typed = DXGI_FORMAT_UNKNOWN;
+			switch (bd.Format) {
+			case DXGI_FORMAT_R8G8B8A8_TYPELESS:
+				typed = DXGI_FORMAT_R8G8B8A8_UNORM;
+				break;
+			case DXGI_FORMAT_B8G8R8A8_TYPELESS:
+				typed = DXGI_FORMAT_B8G8R8A8_UNORM;
+				break;
+			case DXGI_FORMAT_R10G10B10A2_TYPELESS:
+				typed = DXGI_FORMAT_R10G10B10A2_UNORM;
+				break;
+			case DXGI_FORMAT_R16G16B16A16_TYPELESS:
+				typed = DXGI_FORMAT_R16G16B16A16_FLOAT;
+				break;
+			default:
+				break;
+			}
+			if (typed != DXGI_FORMAT_UNKNOWN) {
+				rd.Format = typed;
+				rd.ViewDimension = bd.SampleDesc.Count > 1 ? D3D11_RTV_DIMENSION_TEXTURE2DMS : D3D11_RTV_DIMENSION_TEXTURE2D;
+				prd = &rd;
+			}
+		}
 		ID3D11RenderTargetView* rtv = nullptr;
-		g_dev->CreateRenderTargetView(back, nullptr, &rtv);
+		const HRESULT           hr = g_dev->CreateRenderTargetView(back, prd, &rtv);
 		back->Release();
-		if (rtv) {
-			g_ctx->OMSetRenderTargets(1, &rtv, nullptr);
-			ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-			rtv->Release();
+		if (FAILED(hr) || !rtv) {
+			static bool s_said = false;
+			if (!s_said) {
+				s_said = true;
+				spdlog::warn("Can't draw on the back buffer (format {}, error {:08X}); the interface won't show", static_cast<int>(bd.Format),
+					static_cast<std::uint32_t>(hr));
+			}
+			return;
+		}
+		// draw, then put back what was bound: whatever presents after us (ENB, an upscaler) gets the state it left
+		ID3D11RenderTargetView* oldRtv[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
+		ID3D11DepthStencilView* oldDsv = nullptr;
+		g_ctx->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, oldRtv, &oldDsv);
+		UINT           nvp = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+		D3D11_VIEWPORT oldVp[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
+		g_ctx->RSGetViewports(&nvp, oldVp);
+		g_ctx->OMSetRenderTargets(1, &rtv, nullptr);
+		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+		rtv->Release();
+		g_ctx->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, oldRtv, oldDsv);
+		g_ctx->RSSetViewports(nvp, oldVp);
+		for (auto* v : oldRtv) {
+			if (v) {
+				v->Release();
+			}
+		}
+		if (oldDsv) {
+			oldDsv->Release();
 		}
 	}
 }
