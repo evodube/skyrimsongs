@@ -498,6 +498,35 @@ namespace Overlay
 		Performance::DrawUi();
 		ImGui::Render();
 
+		// An upscaler (Skyrim Upscaler, DLSS/FSR through the game's dynamic resolution) has the frame drawn into the
+		// top-left part of the buffer at the render scale, and stretches that part to the screen afterwards. Drawn at
+		// full size, the interface came out enlarged and cut off on the right and bottom: lay it out at full size,
+		// then draw it shrunk by the same scale, so the stretch brings it back to where it belongs.
+		if (Config::Get().upscalerFix) {
+			float rx = 1.0f, ry = 1.0f;
+			if (auto* state = RE::BSGraphics::State::GetSingleton()) {
+				rx = state->GetRuntimeData().dynamicResolutionWidthRatio;
+				ry = state->GetRuntimeData().dynamicResolutionHeightRatio;
+			}
+			const bool valid = rx >= 0.25f && rx <= 1.0f && ry >= 0.25f && ry <= 1.0f;
+			if (valid && (rx < 0.995f || ry < 0.995f)) {
+				static float s_saidX = 0.0f, s_saidY = 0.0f;
+				if (std::abs(rx - s_saidX) > 0.01f || std::abs(ry - s_saidY) > 0.01f) {
+					s_saidX = rx;
+					s_saidY = ry;
+					spdlog::info("Render scale {:.2f} x {:.2f} (an upscaler): the interface is drawn to match", rx, ry);
+				}
+				auto* dd = ImGui::GetDrawData();
+				for (int i = 0; i < dd->CmdListsCount; ++i) {
+					for (auto& v : dd->CmdLists[i]->VtxBuffer) {
+						v.pos.x *= rx;
+						v.pos.y *= ry;
+					}
+				}
+				dd->ScaleClipRects(ImVec2(rx, ry));
+			}
+		}
+
 		// a "typeless" back buffer (upscalers and frame generation use them) needs the format named for a view
 		D3D11_RENDER_TARGET_VIEW_DESC  rd{};
 		D3D11_RENDER_TARGET_VIEW_DESC* prd = nullptr;
