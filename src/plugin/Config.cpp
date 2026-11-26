@@ -80,6 +80,8 @@ namespace Config
 		put("Play", "HideHud", b(v.hideHud));
 		put("Display", "UpscalerFix", b(v.upscalerFix));
 		put("Play", "SongSort", std::to_string(v.songSort));
+		put("Play", "SongbookX", fmt::format("{:.3f}", v.bookX));
+		put("Play", "SongbookY", fmt::format("{:.3f}", v.bookY));
 		put("Crowd", "ListenRange", f(v.listenRange));
 		put("Crowd", "TipRate", f(v.tipRate));
 		put("Crowd", "TipSize", f(v.tipSize));
@@ -109,6 +111,8 @@ namespace Config
 		v.hideHud = Bool("Play", "HideHud", v.hideHud);
 		v.upscalerFix = Bool("Display", "UpscalerFix", v.upscalerFix);
 		v.songSort = std::clamp(Int("Play", "SongSort", v.songSort), 0, 4);
+		v.bookX = std::clamp(Float("Play", "SongbookX", v.bookX), 0.0f, 1.0f);
+		v.bookY = std::clamp(Float("Play", "SongbookY", v.bookY), 0.0f, 1.0f);
 		v.listenRange = std::clamp(Float("Crowd", "ListenRange", v.listenRange), 200.0f, 6000.0f);
 		v.tipRate = std::clamp(Float("Crowd", "TipRate", v.tipRate), 0.0f, 10.0f);
 		v.tipSize = std::clamp(Float("Crowd", "TipSize", v.tipSize), 0.0f, 10.0f);

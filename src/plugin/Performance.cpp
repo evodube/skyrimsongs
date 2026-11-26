@@ -2274,12 +2274,43 @@ namespace Performance
 			float sw = 0.0f, sh = 0.0f;
 			Overlay::ScreenSize(sw, sh);
 			const float s = g_ui;
+			// it opens where you last left it; drag any empty spot to move it
+			static bool s_recentre = false;
+			auto&       place = Config::Edit();
 			ImGui::SetNextWindowSize(ImVec2((std::min)(860.0f * s, sw * 0.9f), (std::min)(640.0f * s, sh * 0.85f)), ImGuiCond_Always);
-			ImGui::SetNextWindowPos(ImVec2(sw * 0.5f, sh * 0.45f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-			ImGui::Begin("##songbook", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+			ImGui::SetNextWindowPos(ImVec2(sw * place.bookX, sh * place.bookY), s_recentre ? ImGuiCond_Always : ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+			s_recentre = false;
+			ImGui::Begin("##songbook", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+			{
+				// keep it on the screen (also after a resolution change), and remember the spot once you let go
+				const ImVec2 size = ImGui::GetWindowSize();
+				ImVec2       pos = ImGui::GetWindowPos();
+				const ImVec2 kept(std::clamp(pos.x, 0.0f, (std::max)(0.0f, sw - size.x)), std::clamp(pos.y, 0.0f, (std::max)(0.0f, sh - size.y)));
+				if (kept.x != pos.x || kept.y != pos.y) {
+					ImGui::SetWindowPos(kept);
+					pos = kept;
+				}
+				if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && sw > 0.0f && sh > 0.0f) {
+					const float cx = (pos.x + size.x * 0.5f) / sw, cy = (pos.y + size.y * 0.5f) / sh;
+					if (std::abs(cx - place.bookX) > 0.002f || std::abs(cy - place.bookY) > 0.002f) {
+						place.bookX = std::clamp(cx, 0.0f, 1.0f);
+						place.bookY = std::clamp(cy, 0.0f, 1.0f);
+						Config::Save();
+					}
+				}
+			}
 			ImGui::PushFont(F.title);
 			ImGui::TextColored(ImVec4(0.9f, 0.75f, 0.45f, 1.0f), "Songbook");
 			ImGui::PopFont();
+			if (ImGui::IsItemHovered()) {
+				if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+					place.bookX = 0.5f;
+					place.bookY = 0.45f;
+					s_recentre = true;
+					Config::Save();
+				}
+				ImGui::SetTooltip("Drag any empty spot to move the songbook.\nDouble-click here to put it back in the middle.");
+			}
 			ImGui::Separator();
 
 			// the instrument

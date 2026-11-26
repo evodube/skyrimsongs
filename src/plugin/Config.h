@@ -22,6 +22,8 @@ namespace Config
 		int   songSort = 0;               // the songbook: 0 name, 1 length, 2 notes, 3 most played, 4 newest
 		bool  upscalerFix = true;         // draw the interface to match an upscaler's render scale (dynamic resolution)
 		bool  hideHud = false;            // play with nothing on screen (Backspace while playing toggles it)
+		float bookX = 0.5f;               // where the songbook sits: its middle, as a share of the screen (drag it to move it)
+		float bookY = 0.45f;
 
 		// The crowd
 		float listenRange = 700.0f;   // how far you can be heard (game units; 70 is about a metre, so about 10 m)
