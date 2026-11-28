@@ -80,6 +80,12 @@ namespace Menu
 
 		std::string g_captureNote;
 
+		void Hint(const char* a_text)
+		{
+			UI::TextDisabled("%s", a_text);
+			UI::Spacing();
+		}
+
 		void HotkeyRow()
 		{
 			auto& v = Config::Edit();
@@ -128,13 +134,30 @@ namespace Menu
 			if (!g_captureNote.empty()) {
 				UI::TextDisabled("%s", g_captureNote.c_str());
 			}
+			// the controller's hotkey: hold the first button, press the second
+			{
+				static const char* kPresets[] = { "LB+Down", "LB+Up", "RB+Down", "LB+RB", "LS+RS", "Back+Down" };
+				const std::string preview = v.padHotkey.empty() ? std::string(T("MenuPadOff", "None")) : v.padHotkey;
+				if (UI::BeginCombo(TL("MenuPadHotkey", "Controller hotkey").c_str(), preview.c_str())) {
+					if (UI::Selectable(TL("MenuPadOff", "None").c_str(), v.padHotkey.empty())) {
+						v.padHotkey.clear();
+						Config::Save();
+					}
+					for (const char* p : kPresets) {
+						if (UI::Selectable(p, v.padHotkey == p)) {
+							v.padHotkey = p;
+							Config::Save();
+							spdlog::info("Controller hotkey changed in game to {}", p);
+						}
+					}
+					UI::EndCombo();
+				}
+				Hint(T("MenuPadHotkeyHint", "Hold the first button and press the second to take out your instrument; the second press doesn't reach the game.\n"
+				                            "While you play: the D-pad and A X Y B are the notes, LT / RT an octave down / up, LB the sharp,\n"
+				                            "Back the songbook, RB pause, RS hide, Start put away."));
+			}
 		}
 
-		void Hint(const char* a_text)
-		{
-			UI::TextDisabled("%s", a_text);
-			UI::Spacing();
-		}
 		void Changed(bool a_changed) { g_dirty |= a_changed; }
 
 		void SaveRow()

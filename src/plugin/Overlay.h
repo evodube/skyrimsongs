@@ -22,6 +22,12 @@ namespace Overlay
 	void SetMode(Mode a_mode);
 	Mode GetMode();
 
+	// the controller's buttons held now (XInput masks; LT 0x10000, RT 0x20000)
+	std::uint32_t PadHeld();
+	inline constexpr std::uint32_t kPadLT = 0x10000, kPadRT = 0x20000;
+	// "LB+Down" -> its buttons (0 if it names none, or something it doesn't know)
+	std::uint32_t ParsePadButtons(const std::string& a_text);
+
 	bool InstallInputSink();
 	void OnPresent(IDXGISwapChain* a_swapChain);
 	int  SehFilter(EXCEPTION_POINTERS* a_info, const char* a_where);

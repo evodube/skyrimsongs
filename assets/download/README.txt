@@ -23,6 +23,9 @@ How to play
         Z X C V B N M      low        (C D E F G A B)
     Hold Shift for the sharp (the black key to the right). The screen shows all 37 as a piano: each white key
     with its letter, each black key with Shift + letter (S+Z = C#). Up / Down arrows move everything an octave.
+  - A controller: hold LB and press D-pad Down to take it out (GamepadHotkey in the INI, or the in-game menu).
+    D-pad Down Left Up Right and A X Y B are C D E F G A B C; hold LT for the octave below, RT for the octave
+    above, LB for the sharp. Back opens the songbook, RB pauses a song, RS hides the interface, Start stops.
   - A MIDI keyboard plugged in before you take out your instrument just works (velocity and the sustain pedal too).
   - Tab opens the songbook (Esc closes it): switch instrument, or pick a song and press Play: it plays itself on
     your instrument, perfectly, with no input (the cheat). Esc stops a song; Esc again puts the instrument away.

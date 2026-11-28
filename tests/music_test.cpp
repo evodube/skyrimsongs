@@ -220,6 +220,27 @@ namespace
 		CHECK(!keymap::LabelFor(85, 48, l));
 	}
 
+	void TestPadmap()
+	{
+		CHECK(padmap::Pitch(padmap::Index(0x0002), 48, false, false, false) == 60);  // D-pad down = middle C
+		CHECK(padmap::Pitch(padmap::Index(0x1000), 48, true, false, false) == 55);   // LT+A = G3
+		CHECK(padmap::Pitch(padmap::Index(0x2000), 48, false, false, false) == 72);  // B = the C above
+		CHECK(padmap::Pitch(padmap::Index(0x2000), 48, false, true, false) == 84);   // RT+B = the top C
+		CHECK(padmap::Pitch(padmap::Index(0x2000), 48, false, true, true) == -1);    // nothing above it
+		CHECK(padmap::Pitch(padmap::Index(0x0004), 48, false, false, true) == 63);   // LB+left = D#4
+		CHECK(padmap::Index(0x0100) == -1 && padmap::Index(0x0009) == -1);
+		// every one of the 37 notes the keyboard has, the pad has, and the guide names the right buttons
+		for (int p = 48; p <= 84; ++p) {
+			keymap::Label l;
+			CHECK(keymap::LabelFor(p, 48, l));
+			const std::string trig = padmap::Trigger(l.row, l.col);
+			const int         idx = l.col == 7 ? 7 : l.col;
+			CHECK(padmap::Pitch(idx, 48, trig == "LT", trig == "RT", l.shift) == p);
+			CHECK(padmap::Text(l.row, l.col, l.shift).find(padmap::Button(l.col)) != std::string::npos);
+		}
+		CHECK(padmap::Text(2, 7, false) == "RT+B" && padmap::Text(0, 4, true) == "LB+LT+A" && padmap::Text(1, 5, false) == "X");
+	}
+
 	// averaged over the performance, the way the crowd hears it (judged every half second from 4 s on)
 	double Heard(const std::vector<std::pair<double, int>>& a_notes)
 	{
@@ -473,6 +494,7 @@ int main()
 	TestMelodyFromChords();
 	TestSongs();
 	TestKeymap();
+	TestPadmap();
 	TestFreeJudge();
 	TestChartJudge();
 	TestCrowd();

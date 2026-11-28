@@ -21,6 +21,15 @@ Status: in play since 0.1 on SE 1.5.97.
   lowest at the bottom (`Z X C V B N M`, `A S D F G H J`, `Q W E R T Y U`), and `I` for the top C. Shift for
   sharps, Up/Down to move an octave. The lute runs C2-C5 (a lute's range), the flute C4-C7. While you play, none of the keyboard reaches the game; the mouse
   still turns the camera.
+- **A controller:** hold **LB** and press **D-pad Down** to take it out (`GamepadHotkey`, or pick another pair on
+  the SKSE Menu Framework page; the D-pad press is kept from the game, so the favourites don't open). The D-pad and
+  the face buttons are an octave of white notes and the C above, round the D-pad then round the buttons
+  (Down Left Up Right, A X Y B: C D E F G A B C); hold **LT** for the octave below, **RT** for the octave above,
+  **LB** for the sharp: the same 37 notes as the keyboard (RT+B is the top C). **Back** opens the songbook, **RB**
+  pauses a song, **RS** hides the interface, **Start** stops the song or puts the instrument away. The key guide,
+  the play-along lanes and the help line switch to the controller's buttons as soon as you play a note on it. In
+  the songbook the left stick moves the pointer, A clicks, the D-pad scrolls and B goes back. The sticks still
+  move the camera while you play.
 - **A MIDI keyboard:** every MIDI input Windows knows is opened while you play (and closed after), with velocity,
   the sustain pedal and all-notes-off. Its notes sound straight from the driver's thread, not on the next frame.
 - **The songbook** (**Tab**, **Esc** to close): switch instrument, go back to free play, or pick a song: every `.mid` in

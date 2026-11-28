@@ -29,6 +29,9 @@ namespace InstrumentHud
 		ImFont* label;  // engraved labels
 	};
 
+	// show the controller's buttons instead of the keyboard's letters (the last notes came from a controller)
+	inline bool g_pad = false;
+
 	// a_base: the pitch of the bottom row's first key (Z); notes outside the 37 are shown an octave in
 	void DrawLute(ImDrawList* a_dl, ImVec2 a_pos, ImVec2 a_size, float a_scale, int a_base, const std::vector<Sounding>& a_notes, double a_now,
 		const Fonts& a_fonts);

@@ -32,6 +32,14 @@ namespace Overlay
 		std::atomic<bool>  g_inputDisabled{ false };
 		std::atomic<float> g_stick[2]{};
 		std::atomic<bool>  g_padHeld{ false };
+		std::atomic<std::uint32_t> g_padButtons{ 0 };  // the controller's buttons held
+		std::atomic<std::uint32_t> g_padDrop{ 0 };     // buttons the game doesn't get until they're let go (the hotkey's)
+
+		std::uint32_t PadBit(int a_code)
+		{
+			using Pad = RE::BSWin32GamepadDevice::Key;
+			return a_code == Pad::kLeftTrigger ? kPadLT : a_code == Pad::kRightTrigger ? kPadRT : static_cast<std::uint32_t>(a_code) & 0xFFFF;
+		}
 		std::atomic<float> g_mx{ 0.0f }, g_my{ 0.0f };
 		std::atomic<float> g_screenW{ 1920.0f }, g_screenH{ 1080.0f };
 		std::atomic<bool>  g_center{ true };
@@ -102,6 +110,28 @@ namespace Overlay
 					spdlog::info("[input] device {} code {:X} {}", static_cast<int>(e->GetDevice()), code, down ? "down" : "up");
 				}
 				const auto dev = e->GetDevice();
+				if (dev == RE::INPUT_DEVICE::kGamepad) {
+					const auto bit = PadBit(code);
+					if (down) {
+						g_padButtons |= bit;
+					} else {
+						g_padButtons &= ~bit;
+						if (mode != Mode::Closed) {
+							g_padDrop &= ~bit;  // let go while playing: nothing of it reaches the game anyway
+						}
+					}
+				}
+				if (mode == Mode::Closed && dev == RE::INPUT_DEVICE::kGamepad && down) {
+					// the controller's hotkey: all its buttons held, this the last of them pressed. That press (and
+					// its release) is kept from the game, so it doesn't open the favourites or the like
+					const std::uint32_t want = ParsePadButtons(Config::Get().padHotkey), bit = PadBit(code);
+					if (want && (want & bit) && (g_padButtons.load() & want) == want) {
+						g_padDrop |= bit;
+						spdlog::info("Controller hotkey pressed ({})", Config::Get().padHotkey);
+						Performance::OnPadHotkey();
+					}
+					continue;
+				}
 				if (mode == Mode::Closed) {
 					if (dev == RE::INPUT_DEVICE::kKeyboard && down) {
 						// the first few keys each session are logged, so "the hotkey does nothing" can be told apart from
@@ -126,17 +156,19 @@ namespace Overlay
 					} else if (code <= 2) {
 						Push({ InputMsg::Kind::MouseButton, g_mx.load(), g_my.load(), code, down });
 					}
+				} else if (dev == RE::INPUT_DEVICE::kGamepad && mode == Mode::Playing) {
+					Performance::OnPad(code, down);  // the controller is the instrument
 				} else if (dev == RE::INPUT_DEVICE::kGamepad) {
+					// the songbook: the left stick moves the pointer, A clicks, the D-pad scrolls, B / Back / Start close it
 					using Pad = RE::BSWin32GamepadDevice::Key;
-					if (mode == Mode::Book && (code == Pad::kA || code == Pad::kRightTrigger)) {
+					if (code == Pad::kA || code == Pad::kRightTrigger) {
 						g_padHeld = down;
 						Push({ InputMsg::Kind::MouseButton, g_mx.load(), g_my.load(), 0, down });
-					} else if (down && (code == Pad::kB || code == Pad::kStart)) {
+					} else if (down && (code == Pad::kUp || code == Pad::kDown)) {
+						Push({ InputMsg::Kind::Wheel, 0.0f, code == Pad::kUp ? 1.0f : -1.0f });
+					} else if (down && (code == Pad::kB || code == Pad::kStart || code == Pad::kBack)) {
 						Performance::OnKey(0x01, true);  // as Esc
 						Performance::OnKey(0x01, false);
-					} else if (down && code == Pad::kBack) {
-						Performance::OnKey(0x0F, true);  // as Tab: the songbook
-						Performance::OnKey(0x0F, false);
 					}
 				}
 			}
@@ -208,6 +240,41 @@ namespace Overlay
 				for (std::size_t i = 0; i < n; ++i) {
 					saved[i].first->next = saved[i].second;
 				}
+				return;
+			}
+			if (g_padDrop.load() && a_events && *a_events) {
+				// the controller hotkey's last button: kept from the game until it's let go
+				std::array<std::pair<RE::InputEvent*, RE::InputEvent*>, 64> saved{};
+				std::size_t     n = 0;
+				RE::InputEvent* head = nullptr;
+				RE::InputEvent** tail = &head;
+				std::uint32_t   released = 0;
+				for (auto* e = *a_events; e && n < saved.size();) {
+					auto* next = e->next;
+					saved[n++] = { e, next };
+					bool keep = true;
+					if (auto* btn = e->AsButtonEvent(); btn && e->GetDevice() == RE::INPUT_DEVICE::kGamepad) {
+						const auto bit = PadBit(static_cast<int>(btn->GetIDCode()));
+						if (g_padDrop.load() & bit) {
+							keep = false;
+							if (btn->IsUp()) {
+								released |= bit;
+							}
+						}
+					}
+					if (keep) {
+						*tail = e;
+						tail = &e->next;
+					}
+					e = next;
+				}
+				*tail = nullptr;
+				RE::InputEvent* list[1] = { head };
+				g_origDispatch(a_dispatcher, list);
+				for (std::size_t i = 0; i < n; ++i) {
+					saved[i].first->next = saved[i].second;
+				}
+				g_padDrop &= ~released;
 				return;
 			}
 			g_origDispatch(a_dispatcher, a_events);
@@ -308,6 +375,41 @@ namespace Overlay
 	}
 
 	Mode GetMode() { return g_mode.load(); }
+
+	std::uint32_t PadHeld() { return g_padButtons.load(); }
+
+	std::uint32_t ParsePadButtons(const std::string& a_text)
+	{
+		static const std::pair<const char*, std::uint32_t> kNames[] = { { "A", 0x1000 }, { "B", 0x2000 }, { "X", 0x4000 }, { "Y", 0x8000 },
+			{ "LB", 0x0100 }, { "RB", 0x0200 }, { "LT", kPadLT }, { "RT", kPadRT }, { "LS", 0x0040 }, { "RS", 0x0080 }, { "L3", 0x0040 },
+			{ "R3", 0x0080 }, { "BACK", 0x0020 }, { "VIEW", 0x0020 }, { "START", 0x0010 }, { "MENU", 0x0010 }, { "UP", 0x0001 },
+			{ "DOWN", 0x0002 }, { "LEFT", 0x0004 }, { "RIGHT", 0x0008 } };
+		std::uint32_t mask = 0;
+		std::string   word;
+		auto          take = [&]() {
+            if (word.empty()) {
+                return true;
+            }
+            for (const auto& [name, bit] : kNames) {
+                if (word == name) {
+                    mask |= bit;
+                    word.clear();
+                    return true;
+                }
+            }
+            return false;
+		};
+		for (char c : a_text) {
+			if (c == '+' || c == ' ' || c == ',') {
+				if (!take()) {
+					return 0;
+				}
+			} else {
+				word += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+			}
+		}
+		return take() ? mask : 0;
+	}
 
 	void ScreenSize(float& a_w, float& a_h)
 	{

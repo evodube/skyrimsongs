@@ -105,7 +105,8 @@ namespace Performance
 		Instrument           g_lastInst = Instrument::Lute;
 		int                  g_octave = 0;
 		bool                 g_shiftL = false, g_shiftR = false;
-		std::map<int, int>   g_keyPitch;  // a key that's down -> the pitch it started
+		std::map<int, int>   g_keyPitch;  // a key that's down -> the pitch it started (a controller button: 0x10000 + its code)
+		std::atomic<bool>    g_padUsed{ false };  // the last notes came from a controller: the guide shows its buttons
 		std::atomic<int>     g_instA{ 0 };  // g_inst, for the MIDI keyboard's thread
 		std::atomic<bool>    g_midiLive{ false };
 		bool                 g_owns[2]{};
@@ -2155,11 +2156,18 @@ namespace Performance
 						text = kDim;
 					}
 					dl->AddRectFilled({ xs, ly }, { xe, ly + laneH - 6.0f * s }, fill, 5.0f * s);
-					const std::string lab = ok ? fmt::format("{}{}", l.letter, l.shift ? "+" : "") : music::NoteName(n.pitch);
+					// what to press: the key (a + for Shift), or on a controller the button (its trigger is the lane's)
+					const std::string lab = !ok ? music::NoteName(n.pitch) :
+					                        g_padUsed ? fmt::format("{}{}", music::padmap::Button(l.col), l.shift ? "+" : "") :
+					                                    fmt::format("{}{}", l.letter, l.shift ? "+" : "");
 					Text(dl, F.key, { xs + 6.0f * s, ly + 1.0f * s }, text, lab);
 				}
 				dl->PopClipRect();
 				dl->AddLine({ hitX, y - 2.0f * s }, { hitX, y + laneH * 3.0f + 6.0f * s }, kGoldCol, 2.5f * s);
+				if (g_padUsed) {  // on a controller each lane is a trigger: RT the top, nothing the middle, LT the bottom
+					Text(dl, F.sm, { x0 + 4.0f * s, y + 0.0f * laneH + 7.0f * s }, kDim, "RT");
+					Text(dl, F.sm, { x0 + 4.0f * s, y + 2.0f * laneH + 7.0f * s }, kDim, "LT");
+				}
 				if (songT < 0.0) {
 					Text(dl, F.big, { (x0 + x1) * 0.5f, y + laneH * 0.5f }, kGoldCol, fmt::format("{}", static_cast<int>(std::ceil(-songT))), 0.5f);
 				}
@@ -2221,6 +2229,7 @@ namespace Performance
 					}
 				}
 				const InstrumentHud::Fonts fonts{ F.key, F.sm, F.bookIt };
+				InstrumentHud::g_pad = g_padUsed;
 				const ImVec2               ip(p0.x + 16.0f * s, y), isz(W - 32.0f * s, kbH);
 				if (g_inst == music::Instrument::Flute) {
 					InstrumentHud::DrawFlute(dl, ip, isz, s, Base(), sounding, now, fonts);
@@ -2233,6 +2242,13 @@ namespace Performance
 			// the keys' help
 			const std::string octave = g_octave == 0 ? "" : "   " + TF("KeysOctave", "(octave {:+d})", g_octave);
 			Text(dl, F.sm, { p0.x + W * 0.5f, y + 2.0f * s }, kDim,
+				g_padUsed ?
+					std::string(g_act == Act::Auto ?
+							(Audio::SongPaused() ? T("PadAutoPaused", "RB carry on  ·  Back songbook  ·  RS hide  ·  Start stop the song") :
+				                                   T("PadAuto", "RB pause  ·  Back songbook  ·  RS hide  ·  Start stop the song")) :
+							g_act == Act::Free ?
+							T("PadFree", "D-pad and A X Y B play  ·  hold LT / RT an octave down / up, LB the sharp  ·  Back songbook  ·  RS hide  ·  Start put away") :
+							T("PadAlong", "D-pad and A X Y B play  ·  hold LT / RT an octave down / up, LB the sharp  ·  Back songbook  ·  RS hide  ·  Start stop the song")) :
 				g_act == Act::Auto ?
 					(Audio::SongPaused() ? T("KeysAutoPaused", "P carry on  ·  Tab songbook  ·  Backspace hide  ·  Esc stop the song") :
 				                           T("KeysAuto", "P pause  ·  Tab songbook  ·  Backspace hide  ·  Esc stop the song")) :
@@ -2643,7 +2659,8 @@ namespace Performance
 				Stop("put away from the songbook");
 			}
 			ImGui::SameLine();
-			ImGui::TextDisabled("  %s", T("BookEscBack", "Esc: back to playing"));
+			ImGui::TextDisabled("  %s", g_padUsed ? T("BookPadHelp", "Left stick: pointer  ·  A: click  ·  D-pad: scroll  ·  B: back to playing") :
+			                                        T("BookEscBack", "Esc: back to playing"));
 			ImGui::End();
 		}
 	}
@@ -2735,6 +2752,51 @@ namespace Performance
 		SafeTick();
 	}
 
+	void OnPadHotkey()
+	{
+		g_padUsed = true;
+		g_wantStart = true;
+	}
+
+	void OnPad(int a_code, bool a_down)
+	{
+		using Pad = RE::BSWin32GamepadDevice::Key;
+		// the buttons that do what keys do: Start = Esc, Back = Tab (the songbook), RS = Backspace (hide), RB = P (pause)
+		if (a_down) {
+			const int as = a_code == Pad::kStart ? 0x01 : a_code == Pad::kBack ? 0x0F : a_code == Pad::kRightThumb ? 0x0E : a_code == Pad::kRightShoulder ? 0x19 : 0;
+			if (as) {
+				g_padUsed = true;
+				OnKey(as, true);
+				OnKey(as, false);
+				return;
+			}
+		}
+		std::lock_guard lk(g_mtx);
+		if (!g_playing) {
+			return;
+		}
+		const int idx = music::padmap::Index(a_code);
+		if (idx < 0) {
+			return;  // the triggers and LB are read as held (Overlay::PadHeld) when a note button goes down
+		}
+		g_padUsed = true;
+		const int key = 0x10000 + a_code;
+		if (auto it = g_keyPitch.find(key); it != g_keyPitch.end()) {
+			Unsound(it->second);
+			g_keyPitch.erase(it);
+		}
+		if (!a_down || g_act == Act::Auto) {
+			return;
+		}
+		const auto held = Overlay::PadHeld();
+		const int  pitch = music::padmap::Pitch(idx, Base(), (held & Overlay::kPadLT) != 0, (held & Overlay::kPadRT) != 0, (held & Pad::kLeftShoulder) != 0);
+		if (pitch < 0) {
+			return;
+		}
+		g_keyPitch[key] = pitch;
+		Sound(pitch, std::clamp(0.78f + std::uniform_real_distribution<float>(-0.08f, 0.08f)(g_rng), 0.1f, 1.0f));
+	}
+
 	void OnHotkey(int a_scan)
 	{
 		if (IsHotkey(a_scan)) {
@@ -2790,6 +2852,7 @@ namespace Performance
 					Unsound(it->second);
 				}
 				g_keyPitch[a_scan] = pitch;
+				g_padUsed = false;
 				const float vel = std::clamp(0.78f + std::uniform_real_distribution<float>(-0.08f, 0.08f)(g_rng), 0.1f, 1.0f);
 				Sound(pitch, vel);
 				return;
@@ -2862,7 +2925,7 @@ namespace Performance
 			ranges.clear();
 			digits.clear();
 			ImFontGlyphRangesBuilder b;
-			static const ImWchar kBase[] = { 0x0020, 0x024F, 0x0300, 0x036F, 0x2010, 0x205E, 0x20AC, 0x20AC, 0x2122, 0x2122, 0 };
+			static const ImWchar kBase[] = { 0x0020, 0x024F, 0x0300, 0x036F, 0x2010, 0x205E, 0x2190, 0x2193, 0x20AC, 0x20AC, 0x2122, 0x2122, 0 };
 			b.AddRanges(kBase);
 			for (char32_t c : Lang::AllText()) {
 				if (c <= 0xFFFF) {

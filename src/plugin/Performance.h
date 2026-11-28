@@ -12,6 +12,8 @@ namespace Performance
 
 	// from the input hook (main thread)
 	void OnHotkey(int a_scan);           // a key went down while you're not playing
+	void OnPadHotkey();                  // the controller's hotkey, while you're not playing
+	void OnPad(int a_code, bool a_down); // a controller button while you play (not in the songbook)
 	void OnKey(int a_scan, bool a_down); // any key while you play
 
 	// the overlay (Present)

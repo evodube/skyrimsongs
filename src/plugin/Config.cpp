@@ -68,6 +68,7 @@ namespace Config
 		auto f = [](float a_v) { return fmt::format("{:.2f}", a_v); };
 		auto b = [](bool a_v) { return std::string(a_v ? "1" : "0"); };
 		put("Play", "Hotkey", fmt::format("0x{:02X}", v.hotkey));
+		put("Play", "GamepadHotkey", v.padHotkey);
 		put("Play", "RequireInstrument", b(v.requireInstrument));
 		put("Play", "ThirdPerson", b(v.thirdPerson));
 		put("Play", "MuteGameMusic", b(v.muteMusic));
@@ -98,6 +99,7 @@ namespace Config
 	{
 		Values v;
 		v.hotkey = Int("Play", "Hotkey", v.hotkey);
+		v.padHotkey = Str("Play", "GamepadHotkey", v.padHotkey.c_str());
 		v.requireInstrument = Bool("Play", "RequireInstrument", v.requireInstrument);
 		v.thirdPerson = Bool("Play", "ThirdPerson", v.thirdPerson);
 		v.muteMusic = Bool("Play", "MuteGameMusic", v.muteMusic);

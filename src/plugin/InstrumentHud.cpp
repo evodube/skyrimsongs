@@ -111,6 +111,24 @@ namespace InstrumentHud
 			return { l.row, l.col, l.shift };
 		}
 
+		// what a key is called on the guide: its letter, or the controller's button (the trigger is the row's)
+		std::string KeyName(int a_row, int a_col)
+		{
+			if (g_pad) {
+				return music::padmap::Button(a_col);
+			}
+			return std::string(1, a_col == 7 ? 'I' : music::keymap::kLetters[a_row][a_col]);
+		}
+		// all of what to press: "Shift+N", "LB+RT+X"
+		std::string KeyText(int a_row, int a_col, bool a_sharp)
+		{
+			if (g_pad) {
+				return music::padmap::Text(a_row, a_col, a_sharp);
+			}
+			const std::string k = KeyName(a_row, a_col);
+			return a_sharp ? "Shift+" + k : k;
+		}
+
 		// how lit a struck note still is (1 when struck, fading over half a second)
 		float LitOf(float a_age) { return std::clamp(1.0f - a_age / 0.5f, 0.0f, 1.0f); }
 	}
@@ -283,8 +301,11 @@ namespace InstrumentHud
 				dl->AddCircleFilled(cp + ImVec2(0, 2 * s), rad, Rgb(0, 0, 0, 120), 32);
 				dl->AddCircleFilled(cp, rad, Mix(Rgb(30, 20, 12, 215), Rgb(244, 200, 96), lit), 32);
 				dl->AddCircle(cp, rad, Mix(Rgb(200, 164, 104, 170), Rgb(255, 236, 170), lit), 32, 1.4f * s);
-				const char letter = c == 7 ? 'I' : music::keymap::kLetters[r][c];
-				Label(dl, f.key, cp, Mix(Rgb(242, 236, 222), Rgb(46, 30, 12), lit), std::string(1, letter));
+				Label(dl, f.key, cp, Mix(Rgb(242, 236, 222), Rgb(46, 30, 12), lit), KeyName(r, c));
+				// on a controller, the trigger that goes with it: the row's, beside the first fret (and RT on the top C)
+				if (g_pad && (c == 0 || c == 7) && *music::padmap::Trigger(r, c)) {
+					Label(dl, f.sm, cp + ImVec2(-rad - 2.0f * s, -rad + 1.0f * s), Rgb(226, 206, 160, 200), music::padmap::Trigger(r, c));
+				}
 				// the sharp above it, on the next fret
 				if (c < 7 && c != 2 && c != 6) {
 					const ImVec2 dp(edges[c + 1], y - 15.0f * s);
@@ -403,8 +424,7 @@ namespace InstrumentHud
 			// the note's name, over the hole while it sounds
 			if (last && (std::max)(lit, sharpLit) > 0.0f && (trill ? lastCell.col == 7 : lastCell.col == c)) {
 				// the note, and the key that plays it
-				const char  letter = lastCell.col == 7 ? 'I' : music::keymap::kLetters[lastCell.row][lastCell.col];
-				std::string key = lastCell.sharp ? std::string("Shift+") + letter : std::string(1, letter);
+				const std::string key = KeyText(lastCell.row, lastCell.col, lastCell.sharp);
 				Tag(dl, f.sm, { x, yc - r - 16.0f * s }, s, (std::max)(lit, sharpLit), music::NoteName(last->pitch) + "  " + key);
 			}
 			if (!trill && c != 2 && c != 6) {
@@ -421,17 +441,19 @@ namespace InstrumentHud
 					continue;
 				}
 				const bool  active = last && breath > 0.0f && lastCell.row == row && (trill ? lastCell.col == 7 : lastCell.col == c);
-				const char  letter = trill ? 'I' : music::keymap::kLetters[row][c];
+				const std::string letter = KeyName(row, trill ? 7 : c);
 				const float yy = ly + (2 - row) * 21.0f * s;
 				const float on = active ? (std::max)(lit, sharpLit) : 0.0f;
 				if (on > 0.0f) {
 					dl->AddRectFilled({ x - 12 * s, yy - 10 * s }, { x + 12 * s, yy + 10 * s }, Rgb(255, 214, 120, static_cast<int>(60 * on)), 4 * s);
 				}
-				Label(dl, f.key, { x, yy }, Mix(row == 1 ? Rgb(236, 222, 196) : Rgb(150, 136, 114), Rgb(255, 226, 150), on), std::string(1, letter));
+				Label(dl, f.key, { x, yy }, Mix(row == 1 ? Rgb(236, 222, 196) : Rgb(150, 136, 114), Rgb(255, 226, 150), on), letter);
 			}
 		}
 		// the registers, and the breath gauge
-		const char* kReg[3] = { music::Tr("RegisterLow", "low"), music::Tr("RegisterMid", "mid"), music::Tr("RegisterHigh", "high") };
+		// the registers: on a controller, the trigger for each
+		const char* kReg[3] = { g_pad ? "LT" : music::Tr("RegisterLow", "low"), g_pad ? "\xE2\x80\x94" : music::Tr("RegisterMid", "mid"),
+			g_pad ? "RT" : music::Tr("RegisterHigh", "high") };
 		const float ly = yc + r + 20.0f * s;
 		for (int row = 2; row >= 0; --row) {
 			const bool on = last && breath > 0.0f && lastCell.row == row;

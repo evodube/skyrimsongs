@@ -9,6 +9,7 @@ namespace Config
 	{
 		// Playing
 		int   hotkey = 0x2B;              // \: take out your instrument / put it away, close the songbook (DirectInput scan code)
+		std::string padHotkey = "LB+Down";  // on a controller: hold the first, press the second (the second never reaches the game). "" off
 		bool  requireInstrument = true;   // you need a lute or flute in your pack
 		bool  thirdPerson = true;         // switch to third person while you play (and back after)
 		bool  muteMusic = true;           // quiet the game's music while you play
