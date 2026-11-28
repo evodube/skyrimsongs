@@ -14,6 +14,7 @@
 
 #include "Audio.h"
 #include "Config.h"
+#include "Lang.h"
 #include "Menu.h"
 #include "Overlay.h"
 #include "Performance.h"
@@ -234,10 +235,9 @@ namespace
 	void OnMessage(SKSE::MessagingInterface::Message* a_msg)
 	{
 		switch (a_msg->type) {
-		case SKSE::MessagingInterface::kPostLoad:
-			Menu::Register();
-			break;
 		case SKSE::MessagingInterface::kDataLoaded:
+			Lang::Load();      // the game's language is known by now; the menu's names and the fonts follow it
+			Menu::Register();
 			Performance::OnDataLoaded();
 			{
 				const bool frame = SafeInstallFrameHook();

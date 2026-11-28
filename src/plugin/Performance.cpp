@@ -4,6 +4,7 @@
 
 #include "Audio.h"
 #include "InstrumentHud.h"
+#include "Lang.h"
 #include "Config.h"
 #include "MidiIn.h"
 #include "Overlay.h"
@@ -26,6 +27,20 @@ namespace Performance
 	namespace
 	{
 		using music::Instrument;
+		using Lang::T;
+		using Lang::TF;
+		using Lang::TL;
+
+		// someone says something: Name: "line" (the quotes and order are the translation's)
+		std::string Quote(const std::string& a_who, const std::string& a_line) { return TF("Speech", "{0}: \"{1}\"", a_who, a_line); }
+
+		// a button at least this wide, and wider if its (translated) label needs it
+		ImVec2 BW(const std::string& a_label, float a_w)
+		{
+			const auto hash = a_label.find("##");
+			const ImVec2 ts = ImGui::CalcTextSize(a_label.c_str(), hash == std::string::npos ? nullptr : a_label.c_str() + hash);
+			return ImVec2((std::max)(a_w, ts.x + ImGui::GetStyle().FramePadding.x * 2.0f), 0.0f);
+		}
 
 		// ------------------------------------------------------------------------------------------ game forms
 		constexpr RE::FormID kGold = 0x0000000F;
@@ -219,7 +234,9 @@ namespace Performance
 			vm->DispatchMethodCall1(obj, a_fn, args, cb);
 		}
 
-		const char* InstName(Instrument a_i) { return a_i == Instrument::Lute ? "lute" : "flute"; }
+		const char* InstName(Instrument a_i) { return a_i == Instrument::Lute ? "lute" : "flute"; }  // for the log
+		// in a sentence ("You take out your lute.")
+		const char* InstWord(Instrument a_i) { return a_i == Instrument::Lute ? T("WordLute", "lute") : T("WordFlute", "flute"); }
 		int         Base() { return (g_inst == Instrument::Lute ? 36 : 60) + g_octave * 12; }  // the bottom row's C: lute C2-C5, flute C4-C7
 
 		// ------------------------------------------------------------------------------------------ instruments
@@ -264,10 +281,12 @@ namespace Performance
 				}
 			}
 			const std::string name = Lower(a_obj.GetName());
-			if (HasWord(name, "flute") || HasWord(model, "flute")) {
+			// the game's item names in its language: the translation's words for them ($SkyrimSongs_ItemFlute, ItemLute)
+			static const std::string itemFlute = Lower(T("ItemFlute", "flute")), itemLute = Lower(T("ItemLute", "lute"));
+			if (HasWord(name, "flute") || HasWord(model, "flute") || (!itemFlute.empty() && name.find(itemFlute) != std::string::npos)) {
 				return 1;
 			}
-			if (HasWord(name, "lute") || HasWord(model, "lute")) {
+			if (HasWord(name, "lute") || HasWord(model, "lute") || (!itemLute.empty() && HasWord(name, itemLute.c_str()) && name.find(itemFlute) == std::string::npos)) {
 				return 0;
 			}
 			return -1;
@@ -359,7 +378,14 @@ namespace Performance
 
 		const char* FameWord(float a_v)
 		{
-			return a_v < -0.6f ? "Notorious" : a_v < -0.25f ? "Disliked" : a_v < 0.1f ? "A stranger" : a_v < 0.35f ? "Heard of" : a_v < 0.65f ? "Admired" : "Beloved";
+			return a_v < -0.6f ? T("FameNotorious", "Notorious") : a_v < -0.25f ? T("FameDisliked", "Disliked") : a_v < 0.1f ? T("FameStranger", "A stranger") :
+			       a_v < 0.35f ? T("FameHeardOf", "Heard of") : a_v < 0.65f ? T("FameAdmired", "Admired") : T("FameBeloved", "Beloved");
+		}
+		// the same, in the middle of a sentence ("you're admired here now")
+		const char* FameWordLc(float a_v)
+		{
+			return a_v < -0.6f ? T("FameNotoriousLc", "notorious") : a_v < -0.25f ? T("FameDislikedLc", "disliked") : a_v < 0.1f ? T("FameStrangerLc", "a stranger") :
+			       a_v < 0.35f ? T("FameHeardOfLc", "heard of") : a_v < 0.65f ? T("FameAdmiredLc", "admired") : T("FameBelovedLc", "beloved");
 		}
 
 		// how fine an instrument is: the College's refit, or a master's own instrument from the College's quests
@@ -368,7 +394,9 @@ namespace Performance
 			const int k = a_i == Instrument::Lute ? 0 : 1;
 			int       t = g_refit[k];
 			if (auto* p = Player()) {
-				const char* own = k == 0 ? "finn's lute" : "pantea's flute";
+				// the game's names for them (lower case), in its language
+				static const std::string ownLute = Lower(T("ItemFinnsLute", "finn's lute")), ownFlute = Lower(T("ItemPanteasFlute", "pantea's flute"));
+				const std::string& own = k == 0 ? ownLute : ownFlute;
 				for (const auto& [obj, n] : p->GetInventoryCounts([k](RE::TESBoundObject& a_obj) { return IsInstrument(a_obj, k); })) {
 					if (n > 0 && Lower(obj->GetName()).find(own) != std::string::npos) {
 						t = 3;  // the lost instrument itself: a legend
@@ -381,10 +409,10 @@ namespace Performance
 		// "fine lute", "Finn's lute"
 		std::string InstLabel(Instrument a_i, int a_t)
 		{
-			if (a_t >= 3) {
-				return a_i == Instrument::Lute ? "Finn's lute" : "Pantea's flute";
+			if (a_i == Instrument::Lute) {
+				return a_t >= 3 ? T("LabelLute3", "Finn's lute") : a_t == 2 ? T("LabelLute2", "masterwork lute") : a_t == 1 ? T("LabelLute1", "fine lute") : T("LabelLute0", "lute");
 			}
-			return fmt::format("{}{}", TierWord(a_t), InstName(a_i));
+			return a_t >= 3 ? T("LabelFlute3", "Pantea's flute") : a_t == 2 ? T("LabelFlute2", "masterwork flute") : a_t == 1 ? T("LabelFlute1", "fine flute") : T("LabelFlute0", "flute");
 		}
 
 		// The instrument in your hands. The bard idle is what puts it there, and IdleStop_Loose (the put-away) is the
@@ -729,7 +757,7 @@ namespace Performance
 				std::ifstream f(e.path, std::ios::binary);
 				std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
 				if (bytes.size() > 8 * 1024 * 1024) {
-					e.error = "too big";
+					e.error = T("SongTooBig", "too big");
 					e.song.title = std::string(title.begin(), title.end());
 				} else if (!music::SongFromMidi(bytes, std::string(title.begin(), title.end()), e.song, &e.error)) {
 					e.song.title = std::string(title.begin(), title.end());
@@ -790,7 +818,7 @@ namespace Performance
 			g_lastClick = -99.0;
 			EnsureAnim();
 			Audio::PlaySong({}, g_inst, Config::Get().speed, 3.0, false);
-			Say(fmt::format("Play along: {}", g_song.title), kGoldCol);
+			Say(TF("SayPlayAlong", "Play along: {}", g_song.title), kGoldCol);
 			spdlog::info("Play along: {} ({} notes, shifted {} semitones, speed {:.2f})", g_song.title, g_chart.Chart().size(), g_songShift, Config::Get().speed);
 		}
 
@@ -812,7 +840,7 @@ namespace Performance
 			++g_plays[g_song.title];
 			CheerSignature();
 			Audio::PlaySong(notes, g_inst, Config::Get().speed, 1.0, true);
-			Say(fmt::format("You play {}.", g_song.title), kDim);
+			Say(TF("SayYouPlay", "You play {}.", g_song.title), kDim);
 			spdlog::info("Let it play: {} ({} notes)", g_song.title, notes.size());
 		}
 
@@ -852,7 +880,7 @@ namespace Performance
 		std::string NameOfActor(RE::Actor* a_actor)
 		{
 			const char* n = a_actor ? a_actor->GetDisplayFullName() : nullptr;
-			return n && *n ? n : "Someone";
+			return n && *n ? n : T("Someone", "Someone");
 		}
 
 		bool NpcIdle(RE::Actor* a_actor, RE::TESIdleForm* a_idle)
@@ -920,30 +948,51 @@ namespace Performance
 		bool    g_atCollege = false;   // playing in the College's own hall: students gather, teachers judge
 		int     g_collegeShows = 0;    // performances the College took note of (saved): word from the College goes before you
 		bool    g_recognised = false;  // someone has remarked on the lost instrument you're playing (once a performance)
-		bool IsStudent(const std::string& a_name) { return a_name == "Aia Arria" || a_name == "Illdi" || a_name == "Ataf"; }
+		// the College's people by the names the game gives them (in its language: the translation's NPC names)
+		bool IsStudent(const std::string& a_name)
+		{
+			return a_name == T("NpcAiaArria", "Aia Arria") || a_name == T("NpcIlldi", "Illdi") || a_name == T("NpcAtaf", "Ataf");
+		}
 
 		// The College's own people, by name: they say what a teacher would
 		struct Teacher
 		{
-			const char*              name;
+			std::string              name;
 			std::vector<std::string> praise, scold;
 		};
 		const Teacher* TeacherOf(const std::string& a_name)
 		{
 			static const std::vector<Teacher> kTeachers = {
-				{ "Viarmo", { "Splendid! The College could use more like you.", "That's how it's done. Remember that feeling.", "Olaf himself would have stopped to listen." },
-					{ "No, no, no. Again, from the top.", "You embarrass the College with that.", "Have you been practising at all?" } },
-				{ "Inge Six Fingers", { "Hmph. Not bad. There's feeling in it.", "Your fingers know the way. Finally.", "Finn would have smiled at that." },
-					{ "Your fingering's sloppy. Start past four and it shows.", "That's not a lute, that's a hen house.", "Mind your courses, they're buzzing." } },
-				{ "Pantea Ateia", { "Lovely breath. You listened to me.", "Now that is a flute singing.", "Yes! Let it float." },
-					{ "Breathe from the belly, not the chest!", "You're blowing, not playing.", "Mind your embouchure, it's all air." } },
-				{ "Giraud Gemane", { "A fine performance. Worth writing about.", "Now that has a story in it.", "Bravo, bravo." },
-					{ "Even history wouldn't record that.", "Perhaps stick to the written word.", "Hm. Interesting choices." } },
-				{ "Jorn", { "Ha! You'll take my spot at the Festival.", "Now that's a song!", "Play that again tonight!" },
-					{ "Even I've heard better at the Winking Skeever.", "Easy there, you'll wake the dead.", "Rough night?" } },
-				{ "Aia Arria", { "That was beautiful.", "I'd love to learn that one.", "You make it look easy." }, { "Oh. Oh dear.", "Maybe a little softer?", "Was that on purpose?" } },
-				{ "Illdi", { "Oh, that's lovely!", "I hope my piece sounds half as good.", "You have to teach me that!" }, { "Um... was that the classic?", "Inge would have words.", "Oof." } },
-				{ "Ataf", { "Good. Very good.", "Your rhythm is strong.", "That one moves the feet." }, { "Lost the beat there.", "Slower. Feel it first.", "Again, with a steadier hand." } },
+				{ T("NpcViarmo", "Viarmo"),
+					{ T("ViarmoGood1", "Splendid! The College could use more like you."), T("ViarmoGood2", "That's how it's done. Remember that feeling."),
+						T("ViarmoGood3", "Olaf himself would have stopped to listen.") },
+					{ T("ViarmoBad1", "No, no, no. Again, from the top."), T("ViarmoBad2", "You embarrass the College with that."),
+						T("ViarmoBad3", "Have you been practising at all?") } },
+				{ T("NpcInge", "Inge Six Fingers"),
+					{ T("IngeGood1", "Hmph. Not bad. There's feeling in it."), T("IngeGood2", "Your fingers know the way. Finally."),
+						T("IngeGood3", "Finn would have smiled at that.") },
+					{ T("IngeBad1", "Your fingering's sloppy. Start past four and it shows."), T("IngeBad2", "That's not a lute, that's a hen house."),
+						T("IngeBad3", "Mind your courses, they're buzzing.") } },
+				{ T("NpcPantea", "Pantea Ateia"),
+					{ T("PanteaGood1", "Lovely breath. You listened to me."), T("PanteaGood2", "Now that is a flute singing."), T("PanteaGood3", "Yes! Let it float.") },
+					{ T("PanteaBad1", "Breathe from the belly, not the chest!"), T("PanteaBad2", "You're blowing, not playing."),
+						T("PanteaBad3", "Mind your embouchure, it's all air.") } },
+				{ T("NpcGiraud", "Giraud Gemane"),
+					{ T("GiraudGood1", "A fine performance. Worth writing about."), T("GiraudGood2", "Now that has a story in it."), T("GiraudGood3", "Bravo, bravo.") },
+					{ T("GiraudBad1", "Even history wouldn't record that."), T("GiraudBad2", "Perhaps stick to the written word."),
+						T("GiraudBad3", "Hm. Interesting choices.") } },
+				{ T("NpcJorn", "Jorn"),
+					{ T("JornGood1", "Ha! You'll take my spot at the Festival."), T("JornGood2", "Now that's a song!"), T("JornGood3", "Play that again tonight!") },
+					{ T("JornBad1", "Even I've heard better at the Winking Skeever."), T("JornBad2", "Easy there, you'll wake the dead."), T("JornBad3", "Rough night?") } },
+				{ T("NpcAiaArria", "Aia Arria"),
+					{ T("AiaGood1", "That was beautiful."), T("AiaGood2", "I'd love to learn that one."), T("AiaGood3", "You make it look easy.") },
+					{ T("AiaBad1", "Oh. Oh dear."), T("AiaBad2", "Maybe a little softer?"), T("AiaBad3", "Was that on purpose?") } },
+				{ T("NpcIlldi", "Illdi"),
+					{ T("IlldiGood1", "Oh, that's lovely!"), T("IlldiGood2", "I hope my piece sounds half as good."), T("IlldiGood3", "You have to teach me that!") },
+					{ T("IlldiBad1", "Um... was that the classic?"), T("IlldiBad2", "Inge would have words."), T("IlldiBad3", "Oof.") } },
+				{ T("NpcAtaf", "Ataf"),
+					{ T("AtafGood1", "Good. Very good."), T("AtafGood2", "Your rhythm is strong."), T("AtafGood3", "That one moves the feet.") },
+					{ T("AtafBad1", "Lost the beat there."), T("AtafBad2", "Slower. Feel it first."), T("AtafBad3", "Again, with a steadier hand.") } },
 			};
 			for (const auto& t : kTeachers) {
 				if (a_name == t.name) {
@@ -956,7 +1005,7 @@ namespace Performance
 		std::string NameOf(std::uint32_t a_id)
 		{
 			auto it = g_names.find(a_id);
-			return it == g_names.end() ? "Someone" : it->second;
+			return it == g_names.end() ? std::string(T("Someone", "Someone")) : it->second;
 		}
 
 		void React(RE::FormID a_id, int a_kind)  // 0 tip, 1 cheer/applause, 2 boo, 3 enjoy (dance / drink)
@@ -1059,7 +1108,7 @@ namespace Performance
 					if (mood >= 0.45) {
 						g_awayUntil[v.id] = now + std::uniform_real_distribution<double>(90.0, 240.0)(g_rng);
 						if (auto* a = ActorOf(v.id)) {
-							Say(fmt::format("{} wanders off.", NameOfActor(a)), kDim);
+							Say(TF("SayWandersOff", "{} wanders off.", NameOfActor(a)), kDim);
 						}
 					}
 					return true;
@@ -1209,7 +1258,7 @@ namespace Performance
 				const auto id = a->GetFormID();
 				ids.push_back(id);
 				const char* name = a->GetDisplayFullName();
-				g_names[id] = name && *name ? name : "Someone";
+				g_names[id] = name && *name ? name : T("Someone", "Someone");
 				if (g_innkeepers && a->IsInFaction(g_innkeepers)) {
 					g_keeper = id;
 				}
@@ -1292,17 +1341,22 @@ namespace Performance
 					GiveGold(e.gold);
 					MarkTipped(e.id);
 					React(e.id, 0);
-					Say(e.line.empty() ? fmt::format("{} tosses you {} septim{}.", NameOf(e.id), e.gold, e.gold == 1 ? "" : "s") :
-					                     fmt::format("{} tosses you {} septim{}. \"{}\"", NameOf(e.id), e.gold, e.gold == 1 ? "" : "s", e.line),
-						kGoldCol);
+					{
+						std::string tip = e.gold == 1 ? TF("SayTipOne", "{0} tosses you {1} septim.", NameOf(e.id), e.gold) :
+						                                TF("SayTip", "{0} tosses you {1} septims.", NameOf(e.id), e.gold);
+						if (!e.line.empty()) {
+							tip += " " + TF("SayTipLine", "\"{}\"", e.line);
+						}
+						Say(tip, kGoldCol);
+					}
 					break;
 				case music::CrowdEvent::Kind::Heckle:
 					React(e.id, 2);
-					Say(fmt::format("{}: \"{}\"", NameOf(e.id), e.line), kRed);
+					Say(Quote(NameOf(e.id), e.line), kRed);
 					break;
 				case music::CrowdEvent::Kind::Cheer:
 					React(e.id, 1);
-					Say(fmt::format("{}: \"{}\"", NameOf(e.id), e.line), kGreen);
+					Say(Quote(NameOf(e.id), e.line), kGreen);
 					break;
 				case music::CrowdEvent::Kind::Applause:
 					GiveGold(e.gold);
@@ -1314,8 +1368,8 @@ namespace Performance
 							React(id, 1);
 						}
 					}
-					Say(e.gold > 0 ? fmt::format("Applause! The room puts together {} septims. {}: \"{}\"", e.gold, NameOf(e.id), e.line) :
-					                 fmt::format("Applause! {}: \"{}\"", NameOf(e.id), e.line),
+					Say(e.gold > 0 ? TF("SayApplauseGold", "Applause! The room puts together {0} septims. {1}", e.gold, Quote(NameOf(e.id), e.line)) :
+					                 TF("SayApplause", "Applause! {}", Quote(NameOf(e.id), e.line)),
 						kGreen);
 					break;
 				}
@@ -1376,26 +1430,26 @@ namespace Performance
 				return "-";
 			}
 			if (p->IsInCombat()) {
-				return "Not in the middle of a fight.";
+				return T("CantFight", "Not in the middle of a fight.");
 			}
 			auto* st = p->AsActorState();
 			if (st && st->IsWeaponDrawn()) {
-				return "Put your weapon away first.";
+				return T("CantWeapon", "Put your weapon away first.");
 			}
 			if (p->IsOnMount()) {
-				return "Get down from your horse first.";
+				return T("CantHorse", "Get down from your horse first.");
 			}
 			if (st && st->IsSwimming()) {
-				return "Not while swimming.";
+				return T("CantSwim", "Not while swimming.");
 			}
 			if (st && st->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal) {
-				return "Stand up to play.";
+				return T("CantSit", "Stand up to play.");
 			}
 			if (auto* cell = p->GetParentCell(); cell && cell->IsInteriorCell()) {
 				if (auto it = g_bans.find(cell->GetFormID()); it != g_bans.end()) {
 					const float today = RE::Calendar::GetSingleton() ? RE::Calendar::GetSingleton()->GetDaysPassed() : 0.0f;
 					if (today - it->second < 1.0f) {
-						return "Not in here. You were thrown out earlier today.";
+						return T("CantBanned", "Not in here. You were thrown out earlier today.");
 					}
 				}
 			}
@@ -1413,25 +1467,26 @@ namespace Performance
 			if (g_recognised || g_tierNow[k] < 3 || a_present.empty() || !g_animOn) {
 				return;
 			}
-			const char* owner = k == 0 ? "Inge Six Fingers" : "Pantea Ateia";
+			const std::string owner = k == 0 ? T("NpcInge", "Inge Six Fingers") : T("NpcPantea", "Pantea Ateia");
 			const bool  returned = k == 0 ? g_college.lute : g_college.flute;
 			for (auto id : a_present) {
 				if (NameOf(id) == owner) {
 					g_recognised = true;
-					const std::string line = k == 0 ? (returned ? "Is that... Finn's Lute? I thought you'd given it back to me!" :
-					                                              "That's Finn's Lute! I'd know those courses anywhere. You'll bring that back to me, you hear?") :
-					                                  (returned ? "My flute? How are you playing my flute?" :
-					                                              "That's my flute! Where did you find it? I want it back!");
+					const std::string line = k == 0 ? (returned ? T("IngeSeesLuteAgain", "Is that... Finn's Lute? I thought you'd given it back to me!") :
+					                                              T("IngeSeesLute", "That's Finn's Lute! I'd know those courses anywhere. You'll bring that back to me, you hear?")) :
+					                                  (returned ? T("PanteaSeesFluteAgain", "My flute? How are you playing my flute?") :
+					                                              T("PanteaSeesFlute", "That's my flute! Where did you find it? I want it back!"));
 					React(id, 1);
-					Say(fmt::format("{}: \"{}\"", NameOf(id), line), kGoldCol);
-					Hud(fmt::format("{}: \"{}\"", NameOf(id), line));
+					Say(Quote(NameOf(id), line), kGoldCol);
+					Hud(Quote(NameOf(id), line));
 					return;
 				}
 			}
 			if (std::uniform_int_distribution<int>(0, 39)(g_rng) == 0) {  // now and then, someone else
 				g_recognised = true;
 				const auto id = a_present[std::uniform_int_distribution<std::size_t>(0, a_present.size() - 1)(g_rng)];
-				Say(fmt::format("{}: \"{}\"", NameOf(id), k == 0 ? "An eight-course lute? That's an old one. A fine old one." : "What a sweet flute that is."), kGreen);
+				Say(Quote(NameOf(id), k == 0 ? T("SomeoneSeesLute", "An eight-course lute? That's an old one. A fine old one.") : T("SomeoneSeesFlute", "What a sweet flute that is.")),
+					kGreen);
 			}
 		}
 
@@ -1442,7 +1497,10 @@ namespace Performance
 			const char* cn = cell ? cell->GetFullName() : nullptr;
 			auto*       loc = p ? p->GetCurrentLocation() : nullptr;
 			const char* ln = loc ? loc->GetFullName() : nullptr;
-			return Lower(cn).find("bards college") != std::string::npos || Lower(ln).find("bards college") != std::string::npos;
+			// the game's name for it, in its language (lower case)
+			static const std::string college = Lower(T("PlaceBardsCollege", "bards college"));
+			return Lower(cn).find("bards college") != std::string::npos || Lower(ln).find("bards college") != std::string::npos ||
+			       (!college.empty() && (Lower(cn).find(college) != std::string::npos || Lower(ln).find(college) != std::string::npos));
 		}
 
 		// a town's own song of yours: the one played well there most, at least kSignatureAt times ("" if none yet)
@@ -1469,8 +1527,8 @@ namespace Performance
 			if (!g_song.title.empty() && SignatureIn(g_town) == g_song.title && !g_present.empty()) {
 				// the room knows this one
 				g_crowd.Lift(0.12);
-				static const std::vector<std::string> kKnown = { "Ah, this one!", "That's the song!", "Here it comes!", "I know this one!",
-					"My favourite!", "Hah! Play it loud!", "This is the one I told you about." };
+				const std::vector<std::string> kKnown = { T("Known1", "Ah, this one!"), T("Known2", "That's the song!"), T("Known3", "Here it comes!"),
+					T("Known4", "I know this one!"), T("Known5", "My favourite!"), T("Known6", "Hah! Play it loud!"), T("Known7", "This is the one I told you about.") };
 				std::vector<RE::FormID> who = g_present;
 				std::shuffle(who.begin(), who.end(), g_rng);
 				std::vector<music::CrowdEvent> ev;
@@ -1481,7 +1539,7 @@ namespace Performance
 					ev.push_back(e);
 				}
 				HandleCrowd(ev);
-				Say(fmt::format("{} knows this one as your song.", g_townName), kGoldCol);
+				Say(TF("SayKnowsSong", "{} knows this one as your song.", g_townName), kGoldCol);
 			}
 		}
 
@@ -1507,18 +1565,18 @@ namespace Performance
 			}
 			const int score = g_collegeShows * 2 + admired * 3 + signatures * 2 + (std::min)(g_performances / 10, 5);
 			if (!g_college.member) {
-				return { 0, score, 0, "Busker" };
+				return { 0, score, 0, T("RankBusker", "Busker") };
 			}
 			if (score >= 30 && g_collegeShows >= 5) {
-				return { 4, score, 0, "Master Bard" };
+				return { 4, score, 0, T("RankMaster", "Master Bard") };
 			}
 			if (score >= 18) {
-				return { 3, score, 30, "Bard" };
+				return { 3, score, 30, T("RankBard", "Bard") };
 			}
 			if (score >= 8) {
-				return { 2, score, 18, "Journeyman" };
+				return { 2, score, 18, T("RankJourneyman", "Journeyman") };
 			}
-			return { 1, score, 8, "Apprentice" };
+			return { 1, score, 8, T("RankApprentice", "Apprentice") };
 		}
 
 		// the room's temper: your settings, your name in this town, and how fine your instrument is
@@ -1561,7 +1619,7 @@ namespace Performance
 				return;
 			}
 			const double avg = g_moodSum / g_heardFor;
-			std::string  judge = "Viarmo";
+			std::string  judge = T("NpcViarmo", "Viarmo");
 			for (auto id : g_present) {
 				if (TeacherOf(NameOf(id)) && !IsStudent(NameOf(id))) {
 					judge = NameOf(id);
@@ -1572,11 +1630,12 @@ namespace Performance
 				if (g_collegeShows < 10) {
 					++g_collegeShows;
 				}
-				Hud(fmt::format("{}: \"The College takes note of you. Word of this will travel.\"", judge));
-				Say(fmt::format("The College takes note ({} performance{} so far): rooms everywhere tip a little more.", g_collegeShows, g_collegeShows == 1 ? "" : "s"),
+				Hud(Quote(judge, T("CollegeNotes", "The College takes note of you. Word of this will travel.")));
+				Say(g_collegeShows == 1 ? TF("SayCollegeNotesOne", "The College takes note ({} performance so far): rooms everywhere tip a little more.", g_collegeShows) :
+				                          TF("SayCollegeNotes", "The College takes note ({} performances so far): rooms everywhere tip a little more.", g_collegeShows),
 					kGoldCol);
 			} else if (avg < 0.35) {
-				Hud(fmt::format("{}: \"Practise more before you play in these halls again.\"", judge));
+				Hud(Quote(judge, T("CollegePractise", "Practise more before you play in these halls again.")));
 			}
 			spdlog::info("College show: room {:.2f}, noted {}", avg, g_collegeShows);
 		}
@@ -1588,8 +1647,8 @@ namespace Performance
 			if (r.level > g_rankSeen) {
 				g_rankSeen = r.level;
 				if (r.level >= 2) {
-					Hud(fmt::format("A letter from Viarmo: \"The College names you {}. Play like it.\"", r.name));
-					Say(fmt::format("The Bards College names you {}.", r.name), kGoldCol);
+					Hud(TF("HudRankLetter", "A letter from Viarmo: \"The College names you {}. Play like it.\"", r.name));
+					Say(TF("SayRank", "The Bards College names you {}.", r.name), kGoldCol);
 					spdlog::info("Rank: {} (score {})", r.name, r.score);
 				}
 			}
@@ -1610,7 +1669,7 @@ namespace Performance
 			spdlog::info("Fame in {}: {:.2f} -> {:.2f} (room {:.2f} over {:.0f} listener-s{})", g_townName, before, fame.value, avg, g_heardFor,
 				g_thrown ? ", thrown out" : "");
 			if (std::string_view(FameWord(before)) != FameWord(fame.value)) {
-				Hud(fmt::format("Word gets around {}: you're {} here now.", g_townName, Lower(FameWord(fame.value))));
+				Hud(TF("HudFame", "Word gets around {0}: you're {1} here now.", g_townName, FameWordLc(fame.value)));
 			}
 		}
 
@@ -1622,7 +1681,7 @@ namespace Performance
 				spdlog::info("Hotkey: not now ({})", controls ? "the game has your movement controls switched off, or a text box is open" :
 				                                                 "a menu is open or the game is paused");
 				if (controls) {
-					Hud("You can't take out an instrument right now.");
+					Hud(T("HudNotNow", "You can't take out an instrument right now."));
 				}
 				return;
 			}
@@ -1639,14 +1698,14 @@ namespace Performance
 			RefreshOwned();
 			const bool lute = g_owns[0], flute = g_owns[1];
 			if (!lute && !flute) {
-				Hud("You need a lute or a flute to play.");
+				Hud(T("HudNeedInstrument", "You need a lute or a flute to play."));
 				spdlog::info("No lute or flute recognised in your pack:");
 				LogInstrumentLikeItems();
 				return;
 			}
 			SetInst((g_lastInst == Instrument::Lute ? lute : !flute) ? Instrument::Lute : Instrument::Flute);
 			if (!Audio::Start()) {
-				Hud("SkyrimSongs: no sound device found.");
+				Hud(T("HudNoSound", "SkyrimSongs: no sound device found."));
 				return;
 			}
 			Audio::SetVolume(Config::Get().volume);
@@ -1687,7 +1746,7 @@ namespace Performance
 				auto* town = TownOf(p0);
 				g_town = town ? town->GetFormID() : 0;
 				const char* name = town ? town->GetFullName() : nullptr;
-				g_townName = name && *name ? name : "these parts";
+				g_townName = name && *name ? name : T("TheseParts", "these parts");
 			}
 			g_moodSum = g_heardFor = 0.0;
 			g_thrown = false;
@@ -1697,7 +1756,7 @@ namespace Performance
 			CheckRank();
 			ApplyCrowdSettings();
 			if (g_atCollege) {
-				Say("You play in the College's own hall. The students will listen; the teachers will judge.", kDim);
+				Say(T("SayCollegeHall", "You play in the College's own hall. The students will listen; the teachers will judge."), kDim);
 			}
 			g_names.clear();
 			g_feed.clear();
@@ -1710,8 +1769,8 @@ namespace Performance
 			g_quality = 0.5;
 			++g_performances;
 			ScanListeners();
-			Say(fmt::format("You take out your {}.{}", InstName(g_inst),
-					g_midiCount ? fmt::format(" (MIDI: {})", g_midiNames.empty() ? "connected" : g_midiNames.front()) : ""),
+			Say(TF("SayTakeOut", "You take out your {}.", InstWord(g_inst)) +
+					(g_midiCount ? " " + TF("SayMidi", "(MIDI: {})", g_midiNames.empty() ? std::string(T("MidiConnected", "connected")) : g_midiNames.front()) : std::string()),
 				kInk);
 			Overlay::SetMode(Overlay::Mode::Playing);
 			spdlog::info("Playing the {}{}: {} listening{}, MIDI devices {}, in {} ({:08X}, fame {:.2f})", TierWord(Tier(g_inst)), InstName(g_inst), g_crowd.Size(),
@@ -1751,7 +1810,7 @@ namespace Performance
 			g_lastInst = g_inst;
 			Overlay::SetMode(Overlay::Mode::Closed);
 			if (g_earned > 0) {
-				Hud(fmt::format("You earned {} septims playing the {}.", g_earned, InstName(g_inst)));
+				Hud(TF("HudEarned", "You earned {0} septims playing the {1}.", g_earned, InstWord(g_inst)));
 			}
 			spdlog::info("Stopped playing ({}), earned {}", a_why, g_earned);
 		}
@@ -1761,8 +1820,8 @@ namespace Performance
 		{
 			auto* p = Player();
 			auto* cell = p ? p->GetParentCell() : nullptr;
-			const std::string keeper = g_keeper ? NameOf(g_keeper) : "The innkeeper";
-			Hud(fmt::format("{}: \"That's enough! Out, and take that racket with you!\"", keeper));
+			const std::string keeper = g_keeper ? NameOf(g_keeper) : std::string(T("TheInnkeeper", "The innkeeper"));
+			Hud(Quote(keeper, T("ThrownOut", "That's enough! Out, and take that racket with you!")));
 			if (cell) {
 				g_bans[cell->GetFormID()] = RE::Calendar::GetSingleton() ? RE::Calendar::GetSingleton()->GetDaysPassed() : 0.0f;
 			}
@@ -1839,7 +1898,7 @@ namespace Performance
 			}
 			if (p->IsInCombat()) {
 				Stop("combat");
-				Hud(fmt::format("You put your {} away to fight.", InstName(g_inst)));
+				Hud(TF("HudPutAwayFight", "You put your {} away to fight.", InstWord(g_inst)));
 				return;
 			}
 			if (auto* st = p->AsActorState(); st && st->IsWeaponDrawn()) {
@@ -1902,7 +1961,7 @@ namespace Performance
 					g_quality = g_chart.Quality();
 					if (g_chart.Done(t)) {
 						const double score = g_chart.Score();
-						Say(fmt::format("{}: {:.0f}%  ({} perfect, {} good, {} missed)", g_song.title, score * 100.0, g_chart.Perfects(), g_chart.Goods(),
+						Say(TF("SaySongScore", "{0}: {1:.0f}%  ({2} perfect, {3} good, {4} missed)", g_song.title, score * 100.0, g_chart.Perfects(), g_chart.Goods(),
 								g_chart.Misses()),
 							score >= 0.6 ? kGreen : kRed);
 						std::vector<music::CrowdEvent> ev;
@@ -1926,8 +1985,9 @@ namespace Performance
 							const std::string before = SignatureIn(g_town);
 							++g_signature[g_town][g_song.title];
 							if (SignatureIn(g_town) == g_song.title && before != g_song.title) {
-								Hud(fmt::format("{} knows \"{}\" as your song now.", g_townName, g_song.title));
-								Say(fmt::format("{} knows \"{}\" as your song now.", g_townName, g_song.title), kGoldCol);
+								const std::string yours = TF("YourSongNow", "{0} knows \"{1}\" as your song now.", g_townName, g_song.title);
+								Hud(yours);
+								Say(yours, kGoldCol);
 							}
 						}
 						std::vector<music::CrowdEvent> ev;
@@ -1958,9 +2018,10 @@ namespace Performance
 				}
 				if (g_badFor > 4.0 && !g_warned) {
 					g_warned = true;
-					const std::string keeper = g_keeper ? NameOf(g_keeper) : "The innkeeper";
-					Say(fmt::format("{}: \"Play something decent or get out!\"", keeper), kRed);
-					Hud(fmt::format("{}: \"Play something decent or get out!\"", keeper));
+					const std::string keeper = g_keeper ? NameOf(g_keeper) : std::string(T("TheInnkeeper", "The innkeeper"));
+					const std::string warn = Quote(keeper, T("KeeperWarns", "Play something decent or get out!"));
+					Say(warn, kRed);
+					Hud(warn);
 				}
 				if (g_badFor > (g_college.member ? 16.0 : 11.0)) {  // a College bard gets a little longer
 					ThrowOut();
@@ -2025,8 +2086,9 @@ namespace Performance
 
 			// the header: instrument and what you're doing, the room, your earnings
 			float y = p0.y + 8.0f * s;
-			std::string what = g_act == Act::Free ? "Free play" : g_act == Act::Along ? "Playing along: " + g_song.title :
-			                   (Audio::SongPaused() ? "Paused: " : "Playing: ") + g_song.title;
+			std::string what = g_act == Act::Free ? std::string(T("HeadFreePlay", "Free play")) :
+			                   g_act == Act::Along ? TF("HeadAlong", "Playing along: {}", g_song.title) :
+			                   Audio::SongPaused() ? TF("HeadPaused", "Paused: {}", g_song.title) : TF("HeadPlaying", "Playing: {}", g_song.title);
 			{
 				std::string inst = InstLabel(g_inst, g_tierNow[g_inst == Instrument::Lute ? 0 : 1]);
 				inst[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(inst[0])));
@@ -2034,7 +2096,7 @@ namespace Performance
 				Text(dl, F.book, { p0.x + 16.0f * s, y }, kGoldCol, head);
 				if (g_town) {
 					const float       x = p0.x + 16.0f * s + F.book->CalcTextSizeA(F.book->FontSize, FLT_MAX, 0.0f, head.c_str()).x + 14.0f * s;
-					const std::string fame = fmt::format("{}: {}", g_townName, FameWord(FameIn(g_town)));
+					const std::string fame = TF("HeadFame", "{0}: {1}", g_townName, FameWord(FameIn(g_town)));
 					if (x + F.sm->CalcTextSizeA(F.sm->FontSize, FLT_MAX, 0.0f, fame.c_str()).x < p0.x + W * 0.58f) {  // clear of the mood bar
 						Text(dl, F.sm, { x, y + 3.0f * s }, kDim, fame);
 					}
@@ -2044,8 +2106,8 @@ namespace Performance
 				const double mood = g_crowd.Mood();
 				const float  bw = 170.0f * s, bh = 8.0f * s;
 				const ImVec2 b0(p0.x + W * 0.60f, y + 11.0f * s);
-				std::string  label = g_crowd.Size() == 0 ? "Nobody's listening" :
-				                                           fmt::format("{} · {} listening", music::Crowd::MoodWord(mood), g_crowd.Size());
+				std::string  label = g_crowd.Size() == 0 ? std::string(T("NobodyListening", "Nobody's listening")) :
+				                                           TF("Listening", "{0} · {1} listening", music::Crowd::MoodWord(mood), g_crowd.Size());
 				Text(dl, F.sm, { b0.x + bw * 0.5f, y - 8.0f * s }, kDim, label, 0.5f);
 				dl->AddRectFilled(b0, b0 + ImVec2(bw, bh), IM_COL32(60, 50, 40, 220), 3.0f * s);
 				if (g_crowd.Size() > 0) {
@@ -2053,7 +2115,7 @@ namespace Performance
 					dl->AddRectFilled(b0, b0 + ImVec2(bw * static_cast<float>(mood), bh), c, 3.0f * s);
 				}
 			}
-			Text(dl, F.body, { p1.x - 16.0f * s, y + 2.0f * s }, kGoldCol, fmt::format("{} septims", g_earned), 1.0f);
+			Text(dl, F.body, { p1.x - 16.0f * s, y + 2.0f * s }, kGoldCol, TF("Septims", "{} septims", g_earned), 1.0f);
 			y += headH;
 
 			// the sheet music: the notes slide to the line; the lanes are the keyboard's rows (top row highest)
@@ -2102,26 +2164,33 @@ namespace Performance
 					Text(dl, F.big, { (x0 + x1) * 0.5f, y + laneH * 0.5f }, kGoldCol, fmt::format("{}", static_cast<int>(std::ceil(-songT))), 0.5f);
 				}
 				Text(dl, F.sm, { x1 - 6.0f * s, y + 2.0f * s }, kDim,
-					fmt::format("{:.0f}%   streak {}", g_chart.Score() * 100.0, g_chart.Streak()), 1.0f);
+					TF("AlongScore", "{0:.0f}%   streak {1}", g_chart.Score() * 100.0, g_chart.Streak()), 1.0f);
 				y += hwH;
 			} else if (g_act == Act::Free) {
 				// what the room hears in your playing
 				const auto& b = g_breakdown;
 				const bool  silent = g_free.Silent(now);
-				const std::pair<const char*, double> parts[] = { { "Rhythm", b.rhythm }, { "Melody", b.melody }, { "Key", b.key },
-					{ "Phrasing", b.stability }, { "Harmony", b.harmony }, { "Ideas", b.ideas } };
+				const std::pair<const char*, double> parts[] = { { T("JudgeRhythm", "Rhythm"), b.rhythm }, { T("JudgeMelody", "Melody"), b.melody },
+					{ T("JudgeKey", "Key"), b.key }, { T("JudgePhrasing", "Phrasing"), b.stability }, { T("JudgeHarmony", "Harmony"), b.harmony },
+					{ T("JudgeIdeas", "Ideas"), b.ideas } };
 				const float colW = (W - 32.0f * s) / 6.0f;
+				// the bars start after the longest word (a translation's can be longer)
+				float labW = 54.0f * s;
+				for (const auto& pt : parts) {
+					labW = (std::max)(labW, F.sm->CalcTextSizeA(F.sm->FontSize, FLT_MAX, 0.0f, pt.first).x);
+				}
+				labW = (std::min)(labW, colW * 0.6f);
 				for (int i = 0; i < 6; ++i) {
 					const float  cx = p0.x + 16.0f * s + colW * i;
 					const double v = silent ? 0.0 : std::clamp(parts[i].second, 0.0, 1.0);
 					Text(dl, F.sm, { cx, y + 2.0f * s }, kDim, parts[i].first);
-					const ImVec2 b0(cx + 62.0f * s, y + 10.0f * s), b1(cx + colW - 14.0f * s, y + 15.0f * s);
+					const ImVec2 b0(cx + labW + 8.0f * s, y + 10.0f * s), b1(cx + colW - 14.0f * s, y + 15.0f * s);
 					dl->AddRectFilled(b0, b1, IM_COL32(60, 50, 40, 220), 2.0f * s);
 					const ImU32 c = v < 0.35 ? kRed : v < 0.6 ? IM_COL32(220, 200, 140, 255) : kGreen;
 					dl->AddRectFilled(b0, { b0.x + (b1.x - b0.x) * static_cast<float>(v), b1.y }, c, 2.0f * s);
 				}
 				if (b.spam < 1.0 && !silent) {
-					Text(dl, F.sm, { p1.x - 16.0f * s, y - 16.0f * s }, kRed, "sounds like noise", 1.0f);
+					Text(dl, F.sm, { p1.x - 16.0f * s, y - 16.0f * s }, kRed, T("SoundsLikeNoise", "sounds like noise"), 1.0f);
 				}
 				y += hwH;
 			} else if (g_act == Act::Auto) {
@@ -2162,12 +2231,14 @@ namespace Performance
 			}
 
 			// the keys' help
-			const std::string octave = g_octave == 0 ? "" : fmt::format("   (octave {:+d})", g_octave);
+			const std::string octave = g_octave == 0 ? "" : "   " + TF("KeysOctave", "(octave {:+d})", g_octave);
 			Text(dl, F.sm, { p0.x + W * 0.5f, y + 2.0f * s }, kDim,
 				g_act == Act::Auto ?
-					fmt::format("P {}  ·  Tab songbook  ·  Backspace hide  ·  Esc stop the song", Audio::SongPaused() ? "carry on" : "pause") :
-					fmt::format("Z-M  A-J  Q-I play  ·  Shift = black keys (S+Z = C#)  ·  Up/Down octave  ·  Tab songbook  ·  Backspace hide  ·  Esc {}{}",
-						g_act == Act::Free ? "put away" : "stop the song", octave),
+					(Audio::SongPaused() ? T("KeysAutoPaused", "P carry on  ·  Tab songbook  ·  Backspace hide  ·  Esc stop the song") :
+				                           T("KeysAuto", "P pause  ·  Tab songbook  ·  Backspace hide  ·  Esc stop the song")) :
+					(g_act == Act::Free ? T("KeysFree", "Z-M  A-J  Q-I play  ·  Shift = black keys (S+Z = C#)  ·  Up/Down octave  ·  Tab songbook  ·  Backspace hide  ·  Esc put away") :
+				                          T("KeysAlong", "Z-M  A-J  Q-I play  ·  Shift = black keys (S+Z = C#)  ·  Up/Down octave  ·  Tab songbook  ·  Backspace hide  ·  Esc stop the song")) +
+						octave,
 				0.5f);
 
 			// what the room says
@@ -2213,7 +2284,7 @@ namespace Performance
 				}
 				dl->AddPolyline(pts, 10, fav ? kGoldCol : (hov ? IM_COL32(230, 200, 140, 220) : IM_COL32(160, 140, 110, 150)), ImDrawFlags_Closed, 1.3f * s);
 				if (hov) {
-					ImGui::SetTooltip(fav ? "A favourite (click to unmark)" : "Mark as a favourite: favourites come first");
+					ImGui::SetTooltip("%s", fav ? T("FavOn", "A favourite (click to unmark)") : T("FavOff", "Mark as a favourite: favourites come first"));
 				}
 			}
 			ImGui::TableNextColumn();
@@ -2222,12 +2293,13 @@ namespace Performance
 			ImGui::PopFont();
 			if (g_town && SignatureIn(g_town) == a_e.song.title) {
 				ImGui::SameLine();
-				ImGui::TextColored(ImVec4(0.9f, 0.75f, 0.45f, 1.0f), " - your song in %s", g_townName.c_str());
+				ImGui::TextColored(ImVec4(0.9f, 0.75f, 0.45f, 1.0f), "%s", TF("BookYourSongIn", "- your song in {}", g_townName).c_str());
 			} else if (g_town) {
 				if (auto t = g_signature.find(g_town); t != g_signature.end()) {
 					if (auto it = t->second.find(a_e.song.title); it != t->second.end() && it->second > 0 && ImGui::IsItemHovered()) {
-						ImGui::SetTooltip("Gone down well here %d time%s (%d makes it your song in %s)", it->second, it->second == 1 ? "" : "s", kSignatureAt,
-							g_townName.c_str());
+						ImGui::SetTooltip("%s", (it->second == 1 ? TF("BookGoneDownOne", "Gone down well here {0} time ({1} makes it your song in {2})", it->second, kSignatureAt, g_townName) :
+						                                           TF("BookGoneDown", "Gone down well here {0} times ({1} makes it your song in {2})", it->second, kSignatureAt, g_townName))
+						                            .c_str());
 					}
 				}
 			}
@@ -2259,12 +2331,12 @@ namespace Performance
 				ImGui::TextDisabled("-");
 			}
 			ImGui::TableNextColumn();
-			if (ImGui::Button("Play", ImVec2(90.0f * s, 0))) {
+			if (const std::string play = TL("BookPlay", "Play"); ImGui::Button(play.c_str(), BW(play, 90.0f * s))) {
 				StartAuto(a_e.song);
 				Overlay::SetMode(Overlay::Mode::Playing);
 			}
 			if (ImGui::IsItemHovered()) {
-				ImGui::SetTooltip("The song plays itself on your instrument, every note of it, perfectly.\nThe crowd won't know.");
+				ImGui::SetTooltip("%s", T("BookPlayTip", "The song plays itself on your instrument, every note of it, perfectly.\nThe crowd won't know."));
 			}
 			ImGui::PopID();
 		}
@@ -2300,7 +2372,7 @@ namespace Performance
 				}
 			}
 			ImGui::PushFont(F.title);
-			ImGui::TextColored(ImVec4(0.9f, 0.75f, 0.45f, 1.0f), "Songbook");
+			ImGui::TextColored(ImVec4(0.9f, 0.75f, 0.45f, 1.0f), "%s", T("BookTitle", "Songbook"));
 			ImGui::PopFont();
 			if (ImGui::IsItemHovered()) {
 				if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
@@ -2309,12 +2381,12 @@ namespace Performance
 					s_recentre = true;
 					Config::Save();
 				}
-				ImGui::SetTooltip("Drag any empty spot to move the songbook.\nDouble-click here to put it back in the middle.");
+				ImGui::SetTooltip("%s", T("BookMoveTip", "Drag any empty spot to move the songbook.\nDouble-click here to put it back in the middle."));
 			}
 			ImGui::Separator();
 
 			// the instrument
-			ImGui::TextDisabled("Instrument");
+			ImGui::TextDisabled("%s", T("BookInstrument", "Instrument"));
 			for (auto inst : { Instrument::Lute, Instrument::Flute }) {
 				ImGui::SameLine();
 				const bool owned = g_owns[inst == Instrument::Lute ? 0 : 1], on = g_inst == inst;
@@ -2322,7 +2394,8 @@ namespace Performance
 				if (on) {
 					ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55f, 0.42f, 0.2f, 1.0f));
 				}
-				if (ImGui::Button(music::InstrumentName(inst), ImVec2(100.0f * s, 0)) && !on) {
+				const std::string instLabel = std::string(music::InstrumentName(inst)) + (inst == Instrument::Lute ? "##lute" : "##flute");
+				if (ImGui::Button(instLabel.c_str(), BW(instLabel, 100.0f * s)) && !on) {
 					ReleaseAllKeys();
 					BackToFree();
 					SetInst(inst);
@@ -2333,8 +2406,7 @@ namespace Performance
 						EnsureAnim();  // the old one goes away first, then the new one comes out (AnimTick)
 					}
 					ApplyCrowdSettings();
-					Say(fmt::format("You put away the {} and take out the {}.", InstName(inst == Instrument::Lute ? Instrument::Flute : Instrument::Lute),
-							InstName(inst)),
+					Say(TF("SaySwap", "You put away the {0} and take out the {1}.", InstWord(inst == Instrument::Lute ? Instrument::Flute : Instrument::Lute), InstWord(inst)),
 						kDim);
 				}
 				if (on) {
@@ -2342,56 +2414,61 @@ namespace Performance
 				}
 				ImGui::EndDisabled();
 				if (!owned && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-					ImGui::SetTooltip("You don't have one");
+					ImGui::SetTooltip("%s", T("BookDontHave", "You don't have one"));
 				}
 			}
 			ImGui::SameLine(0.0f, 30.0f * s);
-			if (ImGui::Button("Free play", ImVec2(110.0f * s, 0))) {
+			if (const std::string freeL = TL("BookFreePlay", "Free play"); ImGui::Button(freeL.c_str(), BW(freeL, 110.0f * s))) {
 				BackToFree();
 				Overlay::SetMode(Overlay::Mode::Playing);
 			}
 			if (ImGui::IsItemHovered()) {
-				ImGui::SetTooltip("Play whatever you like. The room judges your rhythm, key and melody.");
+				ImGui::SetTooltip("%s", T("BookFreePlayTip", "Play whatever you like. The room judges your rhythm, key and melody."));
 			}
 			// how fine it is, and your name in this town
 			{
 				const int t = g_tierNow[g_inst == Instrument::Lute ? 0 : 1];
 				if (t >= 3) {
-					ImGui::TextColored(ImVec4(0.9f, 0.75f, 0.45f, 1.0f), "You're playing %s", InstLabel(g_inst, t).c_str());
+					ImGui::TextColored(ImVec4(0.9f, 0.75f, 0.45f, 1.0f), "%s", TF("BookPlayingLegend", "You're playing {}", InstLabel(g_inst, t)).c_str());
 					if (ImGui::IsItemHovered()) {
-						ImGui::SetTooltip("%s", g_inst == Instrument::Lute ? "Finn's own eight-course lute, the first ever made. Rooms hear the difference." :
-						                                                     "Pantea's own flute. It sings like no other.");
+						ImGui::SetTooltip("%s", g_inst == Instrument::Lute ? T("BookFinnsLuteTip", "Finn's own eight-course lute, the first ever made. Rooms hear the difference.") :
+						                                                     T("BookPanteasFluteTip", "Pantea's own flute. It sings like no other."));
 					}
 				} else {
-					ImGui::TextDisabled("Your %s: %s", InstName(g_inst), t >= 2 ? "masterwork" : t == 1 ? "fine" : "common");
+					ImGui::TextDisabled("%s", TF("BookYourInstrument", "Your {0}: {1}", InstWord(g_inst),
+						t >= 2 ? T("TierMasterwork", "masterwork") : t == 1 ? T("TierFine", "fine") : T("TierCommon", "common")).c_str());
 				}
 				if (g_town) {
 					ImGui::SameLine(0.0f, 30.0f * s);
 					const float f = FameIn(g_town);
-					ImGui::TextDisabled("%s: %s", g_townName.c_str(), FameWord(f));
+					ImGui::TextDisabled("%s", TF("HeadFame", "{0}: {1}", g_townName, FameWord(f)).c_str());
 					if (ImGui::IsItemHovered()) {
-						ImGui::SetTooltip("Your name here. Please a room and word gets around: newcomers come warmer, tip more and forgive more.\n"
-										  "Empty one (or get thrown out) and it goes the other way. It fades as the days pass.");
+						ImGui::SetTooltip("%s", T("BookFameTip", "Your name here. Please a room and word gets around: newcomers come warmer, tip more and forgive more.\n"
+						                                         "Empty one (or get thrown out) and it goes the other way. It fades as the days pass."));
 					}
 				}
 				ImGui::SameLine(0.0f, 30.0f * s);
 				if (g_college.member) {
 					const Rank r = RankNow();
-					ImGui::TextColored(ImVec4(0.9f, 0.75f, 0.45f, 1.0f), "%s of the College", r.name);
+					ImGui::TextColored(ImVec4(0.9f, 0.75f, 0.45f, 1.0f), "%s", TF("BookRank", "{} of the College", r.name).c_str());
 					if (ImGui::IsItemHovered()) {
-						const std::string next = r.next ? fmt::format("\n\nTowards the next rank: {} / {}{}", r.score, r.next,
-															  r.level == 3 && g_collegeShows < 5 ? " (and five College notices)" : "") :
-						                                  std::string("\n\nThe highest rank there is.");
-						ImGui::SetTooltip("A member of the Bards College: rooms take you more seriously (warmer welcome, better tips), innkeepers give you longer\n"
-										  "before they lose patience, and the College's luthier gives you the members' price. Each rank above Apprentice pays better.\n"
-										  "Ranks come from the College's notices, towns that admire you, songs that are yours somewhere, and nights played.%s%s",
-							g_college.Returned() > 0 ? fmt::format("\nYou brought back {} of the College's lost instruments: word of it follows you.", g_college.Returned()).c_str() : "",
-							next.c_str());
+						const std::string next = r.next ? "\n\n" + (r.level == 3 && g_collegeShows < 5 ?
+						                                                  TF("BookNextRankNotices", "Towards the next rank: {0} / {1} (and five College notices)", r.score, r.next) :
+						                                                  TF("BookNextRank", "Towards the next rank: {0} / {1}", r.score, r.next)) :
+						                                  "\n\n" + std::string(T("BookTopRank", "The highest rank there is."));
+						const std::string returned = g_college.Returned() > 0 ?
+						                                 "\n" + TF("BookReturned", "You brought back {} of the College's lost instruments: word of it follows you.", g_college.Returned()) :
+						                                 std::string();
+						ImGui::SetTooltip("%s%s%s",
+							T("BookMemberTip", "A member of the Bards College: rooms take you more seriously (warmer welcome, better tips), innkeepers give you longer\n"
+							                   "before they lose patience, and the College's luthier gives you the members' price. Each rank above Apprentice pays better.\n"
+							                   "Ranks come from the College's notices, towns that admire you, songs that are yours somewhere, and nights played."),
+							returned.c_str(), next.c_str());
 					}
 				} else {
-					ImGui::TextDisabled("Not of the College");
+					ImGui::TextDisabled("%s", T("BookNotMember", "Not of the College"));
 					if (ImGui::IsItemHovered()) {
-						ImGui::SetTooltip("Join the Bards College in Solitude (Tending the Flames) and rooms take you more seriously.");
+						ImGui::SetTooltip("%s", T("BookNotMemberTip", "Join the Bards College in Solitude (Tending the Flames) and rooms take you more seriously."));
 					}
 				}
 				// the Bards College's luthier refits instruments
@@ -2403,9 +2480,13 @@ namespace Performance
 						const int  price = gift ? 0 : static_cast<int>((next == 1 ? kRefitFine : kRefitMaster) * (g_college.member ? 0.75 : 1.0));
 						const int  have = GoldOf(Player());
 						ImGui::BeginDisabled(have < price);
-						const std::string label = gift ? fmt::format("{} will refit your {} (fine) for free, for bringing hers back", k == 0 ? "Inge" : "Pantea", InstName(g_inst)) :
-						                                 fmt::format("Have the College refit your {} ({}): {} septims{}", InstName(g_inst), next == 1 ? "fine" : "masterwork", price,
-															 g_college.member ? " (members' price)" : "");
+						const std::string label = gift ? (k == 0 ? T("RefitGiftLute", "Inge will refit your lute (fine) for free, for bringing hers back") :
+						                                           T("RefitGiftFlute", "Pantea will refit your flute (fine) for free, for bringing hers back")) :
+						                          g_college.member ?
+						                                 TF("RefitMember", "Have the College refit your {0} ({1}): {2} septims (members' price)", InstWord(g_inst),
+															 next == 1 ? T("TierFine", "fine") : T("TierMasterwork", "masterwork"), price) :
+						                                 TF("Refit", "Have the College refit your {0} ({1}): {2} septims", InstWord(g_inst),
+															 next == 1 ? T("TierFine", "fine") : T("TierMasterwork", "masterwork"), price);
 						if (ImGui::Button(label.c_str())) {
 							if (auto* p = Player(); p && g_gold) {
 								if (price > 0) {
@@ -2413,14 +2494,16 @@ namespace Performance
 								}
 								g_refit[k] = next;
 								ApplyCrowdSettings();
-								Say(fmt::format("The College's luthier refits your {}. It's {} now.", InstName(g_inst), next == 1 ? "a fine one" : "a masterwork"), kGoldCol);
+								Say(next == 1 ? TF("SayRefitFine", "The College's luthier refits your {}. It's a fine one now.", InstWord(g_inst)) :
+								                TF("SayRefitMaster", "The College's luthier refits your {}. It's a masterwork now.", InstWord(g_inst)),
+									kGoldCol);
 								spdlog::info("Refit the {} to tier {} for {} septims", InstName(g_inst), next, price);
 							}
 						}
 						ImGui::EndDisabled();
 						if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-							ImGui::SetTooltip("%s", have < price ? "You can't afford it." :
-							                         "A finer instrument rings fuller and sweeter, and rooms tip more for it and forgive more.");
+							ImGui::SetTooltip("%s", have < price ? T("RefitCantAfford", "You can't afford it.") :
+							                         T("RefitTip", "A finer instrument rings fuller and sweeter, and rooms tip more for it and forgive more."));
 						}
 					}
 				}
@@ -2438,21 +2521,21 @@ namespace Performance
 				dl->AddRectFilled(b0, b0 + ImVec2(bw, bh), IM_COL32(0, 0, 0, 90), 4.0f * s);
 				dl->AddRect(b0, b0 + ImVec2(bw, bh), g_search.empty() ? IM_COL32(200, 160, 90, 80) : kGoldCol, 4.0f * s, 0, 1.2f * s);
 				const bool blink = std::fmod(Now(), 1.0) < 0.55;
-				const std::string shown = g_search.empty() ? std::string("Type to search...") : g_search + (blink ? "|" : "");
+				const std::string shown = g_search.empty() ? std::string(T("BookSearch", "Type to search...")) : g_search + (blink ? "|" : "");
 				dl->AddText(F.body, F.body->FontSize, b0 + ImVec2(8.0f * s, (bh - F.body->FontSize) * 0.5f), g_search.empty() ? IM_COL32(160, 145, 120, 160) : kInk,
 					shown.c_str());
 				ImGui::Dummy(ImVec2(bw, bh));
 				if (!g_search.empty()) {
 					ImGui::SameLine();
-					if (ImGui::SmallButton("Clear")) {
+					if (ImGui::SmallButton(TL("BookClear", "Clear").c_str())) {
 						g_search.clear();
 					}
 				}
 				ImGui::SameLine(0.0f, 30.0f * s);
-				static const char* kSorts[] = { "Name", "Length", "Notes", "Most played", "Newest" };
+				const char* kSorts[] = { T("SortName", "Name"), T("SortLength", "Length"), T("SortNotes", "Notes"), T("SortPlayed", "Most played"), T("SortNewest", "Newest") };
 				ImGui::SetNextItemWidth(170.0f * s);
 				int sort = std::clamp(cfg.songSort, 0, 4);
-				if (ImGui::Combo("Sort by", &sort, kSorts, 5)) {
+				if (ImGui::Combo(TL("BookSortBy", "Sort by").c_str(), &sort, kSorts, 5)) {
 					cfg.songSort = sort;
 					Config::Save();
 				}
@@ -2488,10 +2571,10 @@ namespace Performance
 			ImGui::BeginChild("##songs", ImVec2(0, -footer), true);
 			if (ImGui::BeginTable("##list", 6, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
 				ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 26.0f * s);
-				ImGui::TableSetupColumn("Song", ImGuiTableColumnFlags_WidthStretch, 3.0f);
-				ImGui::TableSetupColumn("Length", ImGuiTableColumnFlags_WidthStretch, 0.7f);
-				ImGui::TableSetupColumn("Notes", ImGuiTableColumnFlags_WidthStretch, 0.7f);
-				ImGui::TableSetupColumn("Played", ImGuiTableColumnFlags_WidthStretch, 0.6f);
+				ImGui::TableSetupColumn(TL("ColSong", "Song").c_str(), ImGuiTableColumnFlags_WidthStretch, 3.0f);
+				ImGui::TableSetupColumn(TL("ColLength", "Length").c_str(), ImGuiTableColumnFlags_WidthStretch, 0.7f);
+				ImGui::TableSetupColumn(TL("ColNotes", "Notes").c_str(), ImGuiTableColumnFlags_WidthStretch, 0.7f);
+				ImGui::TableSetupColumn(TL("ColPlayed", "Played").c_str(), ImGuiTableColumnFlags_WidthStretch, 0.6f);
 				ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 100.0f * s);
 				int id = 0;
 				for (const auto* e : list) {
@@ -2501,12 +2584,12 @@ namespace Performance
 			}
 			if (!g_files.empty() && list.empty()) {
 				ImGui::Spacing();
-				ImGui::TextDisabled("No song matches \"%s\".", g_search.c_str());
+				ImGui::TextDisabled("%s", TF("BookNoMatch", "No song matches \"{}\".", g_search).c_str());
 			}
 			if (g_files.empty()) {
 				ImGui::Spacing();
 				ImGui::PushFont(F.bookIt);
-				ImGui::TextWrapped("Your own songs: put MIDI files (.mid) in Data\\SKSE\\Plugins\\SkyrimSongs\\Songs and open the songbook again.");
+				ImGui::TextWrapped("%s", T("BookOwnSongs", "Your own songs: put MIDI files (.mid) in Data\\SKSE\\Plugins\\SkyrimSongs\\Songs and open the songbook again."));
 				ImGui::PopFont();
 			}
 			ImGui::EndChild();
@@ -2515,19 +2598,19 @@ namespace Performance
 			auto& cfg = Config::Edit();
 			ImGui::SetNextItemWidth(220.0f * s);
 			float speed = cfg.speed * 100.0f;
-			if (ImGui::SliderFloat("Song speed", &speed, 50.0f, 200.0f, "%.0f%%")) {
+			if (ImGui::SliderFloat(TL("BookSpeed", "Song speed").c_str(), &speed, 50.0f, 200.0f, "%.0f%%")) {
 				cfg.speed = std::round(speed / 5.0f) * 5.0f / 100.0f;  // in steps of 5%
 				Audio::SetSongSpeed(cfg.speed);
 			}
 			if (ImGui::IsItemHovered()) {
-				ImGui::SetTooltip("How fast songs play (100%% = as written). Changes a song that's playing, too.");
+				ImGui::SetTooltip("%s", T("BookSpeedTip", "How fast songs play (100% = as written). Changes a song that's playing, too."));
 			}
 			ImGui::SameLine(0.0f, 30.0f * s);
 			ImGui::SetNextItemWidth(220.0f * s);
-			if (ImGui::SliderFloat("Volume", &cfg.volume, 0.0f, 2.0f, "%.2f")) {
+			if (ImGui::SliderFloat(TL("BookVolume", "Volume").c_str(), &cfg.volume, 0.0f, 2.0f, "%.2f")) {
 				Audio::SetVolume(cfg.volume);
 			}
-			if (ImGui::Checkbox("Hide the interface while playing (Backspace)", &cfg.hideHud)) {
+			if (ImGui::Checkbox(TL("BookHideHud", "Hide the interface while playing (Backspace)").c_str(), &cfg.hideHud)) {
 				Config::Save();
 			}
 
@@ -2536,18 +2619,19 @@ namespace Performance
 				for (const auto& n : g_midiNames) {
 					names += (names.empty() ? "" : ", ") + n;
 				}
-				ImGui::TextDisabled("MIDI keyboard: %s", names.c_str());
+				ImGui::TextDisabled("%s", TF("BookMidi", "MIDI keyboard: {}", names).c_str());
 			} else {
-				ImGui::TextDisabled("No MIDI keyboard found (plug it in before you take out your instrument).");
+				ImGui::TextDisabled("%s", T("BookNoMidi", "No MIDI keyboard found (plug it in before you take out your instrument)."));
 			}
 			ImGui::Spacing();
-			if (ImGui::Button("Back to playing", ImVec2(160.0f * s, 0))) {
+			if (const std::string back = TL("BookBack", "Back to playing"); ImGui::Button(back.c_str(), BW(back, 160.0f * s))) {
 				Overlay::SetMode(Overlay::Mode::Playing);
 			}
 			if (g_act == Act::Auto) {
 				ImGui::SameLine();
 				const bool paused = Audio::SongPaused();
-				if (ImGui::Button(paused ? "Carry on (P)" : "Pause (P)", ImVec2(140.0f * s, 0))) {
+				const std::string pl = paused ? TL("BookCarryOn", "Carry on (P)") : TL("BookPause", "Pause (P)");
+				if (ImGui::Button(pl.c_str(), BW(pl, 140.0f * s))) {
 					Audio::PauseSong(!paused);
 					if (paused) {
 						EnsureAnim();
@@ -2555,11 +2639,11 @@ namespace Performance
 				}
 			}
 			ImGui::SameLine();
-			if (ImGui::Button(fmt::format("Put the {} away", InstName(g_inst)).c_str(), ImVec2(180.0f * s, 0))) {
+			if (const std::string away = TF("BookPutAway", "Put the {} away", InstWord(g_inst)) + "##putaway"; ImGui::Button(away.c_str(), BW(away, 180.0f * s))) {
 				Stop("put away from the songbook");
 			}
 			ImGui::SameLine();
-			ImGui::TextDisabled("  Esc: back to playing");
+			ImGui::TextDisabled("  %s", T("BookEscBack", "Esc: back to playing"));
 			ImGui::End();
 		}
 	}
@@ -2695,7 +2779,7 @@ namespace Performance
 			if (!pause) {
 				EnsureAnim();
 			}
-			Say(pause ? "You pause." : "You carry on.", kDim);
+			Say(pause ? T("SayPause", "You pause.") : T("SayCarryOn", "You carry on."), kDim);
 			return;
 		}
 		// a note key (while a song plays itself, the note keys rest)
@@ -2725,7 +2809,7 @@ namespace Performance
 		switch (a_scan) {
 		case 0x01:  // Esc: stop the song, or put the instrument away
 			if (g_act != Act::Free) {
-				Say("You stop the song.", kDim);
+				Say(T("SayStopSong", "You stop the song."), kDim);
 				BackToFree();
 			} else {
 				Stop("Esc");
@@ -2771,7 +2855,69 @@ namespace Performance
 		const std::string ours = "Data\\SKSE\\Plugins\\SkyrimSongs\\Fonts\\";
 		const std::string sys = std::string(windir) + "\\Fonts\\";
 		std::error_code   ec;
-		auto load = [&](const char* a_file, const char* a_fallback, float a_size) -> ImFont* {
+		// the letters the fonts carry: Latin with its accents (Polish, Czech, Romanian...), common punctuation, and
+		// every character the translation uses (Cyrillic, Greek, Chinese, Japanese, Korean... whatever it's written in)
+		static ImVector<ImWchar> ranges, digits;
+		{
+			ranges.clear();
+			digits.clear();
+			ImFontGlyphRangesBuilder b;
+			static const ImWchar kBase[] = { 0x0020, 0x024F, 0x0300, 0x036F, 0x2010, 0x205E, 0x20AC, 0x20AC, 0x2122, 0x2122, 0 };
+			b.AddRanges(kBase);
+			for (char32_t c : Lang::AllText()) {
+				if (c <= 0xFFFF) {
+					b.AddChar(static_cast<ImWchar>(c));
+				}
+			}
+			b.BuildRanges(&ranges);
+			ImFontGlyphRangesBuilder d;
+			static const ImWchar kDigits[] = { 0x0020, 0x007E, 0 };
+			d.AddRanges(kDigits);
+			d.BuildRanges(&digits);
+		}
+		auto found = [&](const std::string& a_path) { return !a_path.empty() && std::filesystem::exists(a_path, ec); };
+		// what fills in the letters our fonts lack: the translation's own font, then Windows' (every PC has these)
+		std::vector<std::string> fills;
+		if (const auto& own = Lang::FontFile(); !own.empty()) {
+			for (const std::string& at : { ours + own, sys + own, own }) {
+				if (found(at)) {
+					fills.push_back(at);
+					break;
+				}
+			}
+			if (fills.empty()) {
+				spdlog::warn("Language: the translation's font {} isn't in SkyrimSongs\\Fonts or Windows\\Fonts", own);
+			}
+		}
+		{
+			bool kana = false, hangul = false, han = false;
+			for (char32_t c : Lang::AllText()) {
+				kana |= (c >= 0x3040 && c <= 0x30FF);
+				hangul |= (c >= 0xAC00 && c <= 0xD7AF) || (c >= 0x1100 && c <= 0x11FF);
+				han |= (c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF);
+			}
+			const std::string& lang = Lang::Language();
+			std::vector<const char*> want = { "segoeui.ttf", "arial.ttf" };
+			if (kana || lang == "JAPANESE") {
+				want.insert(want.end(), { "YuGothM.ttc", "meiryo.ttc", "msgothic.ttc" });
+			}
+			if (hangul || lang == "KOREAN") {
+				want.insert(want.end(), { "malgun.ttf", "gulim.ttc" });
+			}
+			if (han || lang == "CHINESE") {
+				if (lang == "CHINESE") {  // Skyrim's Chinese is traditional
+					want.insert(want.end(), { "msjh.ttc", "mingliu.ttc", "msyh.ttc", "simsun.ttc" });
+				} else {
+					want.insert(want.end(), { "msyh.ttc", "simsun.ttc", "msjh.ttc" });
+				}
+			}
+			for (const char* w : want) {
+				if (found(sys + w)) {
+					fills.push_back(sys + w);
+				}
+			}
+		}
+		auto load = [&](const char* a_file, const char* a_fallback, float a_size, bool a_digitsOnly = false) -> ImFont* {
 			std::string p = ours + a_file;
 			if (!std::filesystem::exists(p, ec)) {
 				p = sys + a_fallback;
@@ -2782,15 +2928,29 @@ namespace Performance
 			ImFontConfig fc;
 			fc.OversampleH = 2;
 			fc.OversampleV = 1;
-			return io.Fonts->AddFontFromFileTTF(p.c_str(), a_size * g_ui, &fc);
+			const ImWchar* r = a_digitsOnly ? digits.Data : ranges.Data;
+			ImFont*        font = io.Fonts->AddFontFromFileTTF(p.c_str(), a_size * g_ui, &fc, r);
+			if (font && !a_digitsOnly) {
+				for (const auto& fill : fills) {
+					ImFontConfig mc;
+					mc.MergeMode = true;
+					mc.OversampleH = 1;
+					mc.OversampleV = 1;
+					mc.PixelSnapH = true;
+					io.Fonts->AddFontFromFileTTF(fill.c_str(), a_size * g_ui, &mc, r);
+				}
+			}
+			return font;
 		};
 		F.body = load("BarlowCondensed-Medium.ttf", "arialn.ttf", 21.0f);
 		F.sm = load("BarlowCondensed-Medium.ttf", "arialn.ttf", 16.0f);
 		F.key = load("BarlowCondensed-SemiBold.ttf", "arialnb.ttf", 22.0f);
-		F.big = load("BarlowCondensed-SemiBold.ttf", "arialnb.ttf", 64.0f);
+		F.big = load("BarlowCondensed-SemiBold.ttf", "arialnb.ttf", 64.0f, true);  // the count-in's numbers
 		F.title = load("IMFellEnglishSC-Regular.ttf", "georgia.ttf", 34.0f);
 		F.book = load("IMFellEnglish-Regular.ttf", "georgia.ttf", 21.0f);
 		F.bookIt = load("IMFellEnglish-Italic.ttf", "georgiai.ttf", 19.0f);
+		spdlog::info("Interface: {} letter ranges, filled in from {}", ranges.Size / 2, fills.empty() ? std::string("nothing") : fmt::format("{} font(s), first {}", fills.size(),
+			std::filesystem::path(fills.front()).filename().string()));
 		ImFont* any = F.body ? F.body : io.Fonts->AddFontDefault();
 		for (ImFont** f : { &F.body, &F.sm, &F.key, &F.big, &F.title, &F.book, &F.bookIt }) {
 			if (!*f) {
@@ -2843,7 +3003,7 @@ namespace Performance
 			float sw = 0.0f, sh = 0.0f;
 			Overlay::ScreenSize(sw, sh);
 			const float a = static_cast<float>(age < 2.0 ? 1.0 : 3.0 - age);
-			Text(ImGui::GetBackgroundDrawList(), F.sm, { sw * 0.5f, sh - 40.0f * g_ui }, Fade(kDim, a), "Interface hidden  ·  Backspace to show it", 0.5f);
+			Text(ImGui::GetBackgroundDrawList(), F.sm, { sw * 0.5f, sh - 40.0f * g_ui }, Fade(kDim, a), T("HudHidden", "Interface hidden  ·  Backspace to show it"), 0.5f);
 		}
 		if (Overlay::GetMode() == Overlay::Mode::Book) {
 			DrawBook();

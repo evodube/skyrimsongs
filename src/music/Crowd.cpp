@@ -1,6 +1,7 @@
 // SkyrimSongs - play the lute and flute in Skyrim.
 // Copyright (C) 2026 evodube. GPL-3.0 (LICENSE.txt).
 #include "Crowd.h"
+#include "Text.h"
 
 #include <algorithm>
 #include <cmath>
@@ -9,44 +10,46 @@ namespace music
 {
 	namespace
 	{
-		const std::vector<std::string> kHeckles = {
-			"By Ysmir, my ears!",
-			"Did you learn that from a skeever?",
-			"Play something we know!",
-			"My horker sings better than that.",
-			"Stop! You're curdling the mead!",
-			"Was that a song or a cry for help?",
-			"Sweet Mara, make it stop.",
-			"I'd rather hear a dragon gargle.",
-			"Go back to the College and ask for your coin back!",
-			"Boo! Off with you!",
-			"Even a draugr would walk out on this.",
-			"Is that thing strung with sinew?",
+		using Line = Crowd::Line;
+
+		const std::vector<Line> kHeckles = {
+			{ "CrowdHeckle1", "By Ysmir, my ears!" },
+			{ "CrowdHeckle2", "Did you learn that from a skeever?" },
+			{ "CrowdHeckle3", "Play something we know!" },
+			{ "CrowdHeckle4", "My horker sings better than that." },
+			{ "CrowdHeckle5", "Stop! You're curdling the mead!" },
+			{ "CrowdHeckle6", "Was that a song or a cry for help?" },
+			{ "CrowdHeckle7", "Sweet Mara, make it stop." },
+			{ "CrowdHeckle8", "I'd rather hear a dragon gargle." },
+			{ "CrowdHeckle9", "Go back to the College and ask for your coin back!" },
+			{ "CrowdHeckle10", "Boo! Off with you!" },
+			{ "CrowdHeckle11", "Even a draugr would walk out on this." },
+			{ "CrowdHeckle12", "Is that thing strung with sinew?" },
 		};
-		const std::vector<std::string> kCheers = {
-			"Now that's a tune!",
-			"Another! Play another!",
-			"By Talos, they can play!",
-			"Ha! Fingers of gold, this one.",
-			"Better than the house bard, I'd say.",
-			"That takes me back...",
-			"Shor's bones, that's lovely.",
-			"Keep playing, friend!",
+		const std::vector<Line> kCheers = {
+			{ "CrowdCheer1", "Now that's a tune!" },
+			{ "CrowdCheer2", "Another! Play another!" },
+			{ "CrowdCheer3", "By Talos, they can play!" },
+			{ "CrowdCheer4", "Ha! Fingers of gold, this one." },
+			{ "CrowdCheer5", "Better than the house bard, I'd say." },
+			{ "CrowdCheer6", "That takes me back..." },
+			{ "CrowdCheer7", "Shor's bones, that's lovely." },
+			{ "CrowdCheer8", "Keep playing, friend!" },
 		};
-		const std::vector<std::string> kTips = {
-			"Here, for your trouble.",
-			"Keep it coming.",
-			"Buy yourself some new strings.",
-			"For the song.",
-			"Lovely playing.",
-			"Have a drink on me.",
-			"",
-			"",
+		const std::vector<Line> kTips = {
+			{ "CrowdTipLine1", "Here, for your trouble." },
+			{ "CrowdTipLine2", "Keep it coming." },
+			{ "CrowdTipLine3", "Buy yourself some new strings." },
+			{ "CrowdTipLine4", "For the song." },
+			{ "CrowdTipLine5", "Lovely playing." },
+			{ "CrowdTipLine6", "Have a drink on me." },
+			{ nullptr, "" },
+			{ nullptr, "" },
 		};
-		const std::vector<std::string> kRelief = {
-			"Is it over? Thank the Divines.",
-			"Finally.",
-			"Don't play that one again.",
+		const std::vector<Line> kRelief = {
+			{ "CrowdRelief1", "Is it over? Thank the Divines." },
+			{ "CrowdRelief2", "Finally." },
+			{ "CrowdRelief3", "Don't play that one again." },
 		};
 	}
 
@@ -56,9 +59,10 @@ namespace music
 
 	double Crowd::Rand() { return std::uniform_real_distribution<double>(0.0, 1.0)(m_rng); }
 
-	const std::string& Crowd::Pick(const std::vector<std::string>& a_lines)
+	std::string Crowd::Pick(const std::vector<Line>& a_lines)
 	{
-		return a_lines[std::uniform_int_distribution<std::size_t>(0, a_lines.size() - 1)(m_rng)];
+		const Line& l = a_lines[std::uniform_int_distribution<std::size_t>(0, a_lines.size() - 1)(m_rng)];
+		return l.key ? Tr(l.key, l.english) : std::string();
 	}
 
 	double Crowd::MoodOf(std::uint32_t a_id) const
@@ -123,7 +127,8 @@ namespace music
 
 	const char* Crowd::MoodWord(double a_mood)
 	{
-		return a_mood < 0.18 ? "Hostile" : a_mood < 0.35 ? "Restless" : a_mood < 0.55 ? "Listening" : a_mood < 0.78 ? "Enjoying it" : "Spellbound";
+		return a_mood < 0.18 ? Tr("MoodHostile", "Hostile") : a_mood < 0.35 ? Tr("MoodRestless", "Restless") : a_mood < 0.55 ? Tr("MoodListening", "Listening") :
+		       a_mood < 0.78 ? Tr("MoodEnjoying", "Enjoying it") : Tr("MoodSpellbound", "Spellbound");
 	}
 
 	void Crowd::Step(double a_dt, double a_quality, double a_skill, bool a_playing, std::vector<CrowdEvent>& a_out)

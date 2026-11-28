@@ -1,6 +1,7 @@
 // SkyrimSongs - play the lute and flute in Skyrim.
 // Copyright (C) 2026 evodube. GPL-3.0 (LICENSE.txt).
 #include "Synth.h"
+#include "Text.h"
 
 #include <algorithm>
 #include <cmath>
@@ -34,9 +35,9 @@ namespace music
 	{
 		switch (a_i) {
 		case Instrument::Lute:
-			return "Lute";
+			return Tr("InstLute", "Lute");
 		case Instrument::Flute:
-			return "Flute";
+			return Tr("InstFlute", "Flute");
 		default:
 			return "?";
 		}

@@ -74,7 +74,15 @@ namespace music
 			double        heard = 0.0;  // seconds they've listened to you playing
 		};
 
-		const std::string& Pick(const std::vector<std::string>& a_lines);
+	public:
+		struct Line
+		{
+			const char* key;  // nullptr: says nothing
+			const char* english;
+		};
+
+	private:
+		std::string Pick(const std::vector<Line>& a_lines);
 		double             Rand();
 
 		Settings            m_set;

@@ -32,6 +32,10 @@ The crowd judges free play on rhythm (a steady beat), key (staying in one scale)
 not random jumps), pace and variety; a song from the songbook always goes down well. Tips come faster and bigger the
 happier the room and the better your Speech; you gain Speech experience for what you earn.
 
+Translations: Data\Interface\Translations\SkyrimSongs_ENGLISH.txt has every line of text. Copy it to
+SkyrimSongs_<LANGUAGE>.txt (RUSSIAN, GERMAN, CHINESE... the game's language), translate the text after each tab,
+keep the keys and {} placeholders, save as UTF-16 LE or UTF-8. Missing lines stay English. Details in the file.
+
 Settings: in game with SKSE Menu Framework (Mod Control Panel > Skyrim Songs), or Data\SKSE\Plugins\SkyrimSongs.ini.
 Log: Documents\My Games\Skyrim Special Edition\SKSE\SkyrimSongs.log
 

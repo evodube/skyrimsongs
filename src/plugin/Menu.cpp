@@ -5,6 +5,7 @@
 #include "Menu.h"
 #include "Audio.h"
 #include "Config.h"
+#include "Lang.h"
 
 #include "../music/Keymap.h"
 
@@ -16,6 +17,23 @@ namespace Menu
 	namespace
 	{
 		namespace UI = ImGuiMCP;
+		using Lang::T;
+		using Lang::TF;
+		using Lang::TL;
+
+		// a slider's number format with a translated word after it (a % in the word kept literal)
+		std::string Units(const char* a_num, const char* a_word)
+		{
+			std::string w = a_word, out = a_num;
+			out += ' ';
+			for (char c : w) {
+				out += c;
+				if (c == '%') {
+					out += '%';
+				}
+			}
+			return out;
+		}
 
 		bool g_dirty = false;
 
@@ -65,10 +83,10 @@ namespace Menu
 		void HotkeyRow()
 		{
 			auto& v = Config::Edit();
-			UI::Text("Hotkey: %s", KeyName(v.hotkey).c_str());
+			UI::TextUnformatted(TF("MenuHotkey", "Hotkey: {}", KeyName(v.hotkey)).c_str());
 			UI::SameLine();
 			if (!g_capturing) {
-				if (UI::Button("Change...")) {
+				if (UI::Button(TL("MenuChangeKey", "Change...").c_str())) {
 					g_capturing = true;
 					g_captureNote.clear();
 					for (int vk = 0; vk < 256; ++vk) {
@@ -76,7 +94,7 @@ namespace Menu
 					}
 				}
 			} else {
-				UI::TextColored(UI::ImVec4{ 0.95f, 0.8f, 0.4f, 1.0f }, "Press a key... (Esc cancels)");
+				UI::TextColored(UI::ImVec4{ 0.95f, 0.8f, 0.4f, 1.0f }, "%s", T("MenuPressKey", "Press a key... (Esc cancels)"));
 				for (int vk = 8; vk < 256; ++vk) {
 					if (vk == VK_SHIFT || vk == VK_CONTROL || vk == VK_MENU) {
 						continue;  // the left/right versions are reported too
@@ -96,7 +114,7 @@ namespace Menu
 						continue;
 					}
 					if (UsedWhilePlaying(scan)) {
-						g_captureNote = KeyName(scan) + " is used while you play - pick another key.";
+						g_captureNote = TF("MenuKeyTaken", "{} is used while you play - pick another key.", KeyName(scan));
 						continue;
 					}
 					v.hotkey = scan;
@@ -123,70 +141,70 @@ namespace Menu
 		{
 			UI::Spacing();
 			UI::Separator();
-			if (UI::Button("Save to SkyrimSongs.ini")) {
+			if (UI::Button(TL("MenuSave", "Save to SkyrimSongs.ini").c_str())) {
 				Config::Save();
 				g_dirty = false;
 			}
 			UI::SameLine();
-			if (UI::Button("Undo changes")) {
+			if (UI::Button(TL("MenuUndo", "Undo changes").c_str())) {
 				Config::Load();
 				g_dirty = false;
 			}
 			if (g_dirty) {
 				UI::SameLine();
-				UI::TextDisabled("(not saved yet: changes last until you quit)");
+				UI::TextDisabled("%s", T("MenuNotSaved", "(not saved yet: changes last until you quit)"));
 			}
 		}
 
 		void __stdcall Playing()
 		{
 			auto& v = Config::Edit();
-			UI::SeparatorText("Taking out your instrument");
+			UI::SeparatorText(T("MenuHeadInstrument", "Taking out your instrument"));
 			HotkeyRow();
-			Changed(UI::Checkbox("Need a lute or flute in your pack", &v.requireInstrument));
-			Changed(UI::Checkbox("Switch to third person while playing", &v.thirdPerson));
-			Changed(UI::Checkbox("Quiet the game's music while playing", &v.muteMusic));
-			UI::SeparatorText("Sound");
-			if (UI::SliderFloat("Volume", &v.volume, 0.0f, 2.0f, "%.2f")) {
+			Changed(UI::Checkbox(TL("MenuNeedInstrument", "Need a lute or flute in your pack").c_str(), &v.requireInstrument));
+			Changed(UI::Checkbox(TL("MenuThirdPerson", "Switch to third person while playing").c_str(), &v.thirdPerson));
+			Changed(UI::Checkbox(TL("MenuMuteMusic", "Quiet the game's music while playing").c_str(), &v.muteMusic));
+			UI::SeparatorText(T("MenuHeadSound", "Sound"));
+			if (UI::SliderFloat(TL("MenuVolume", "Volume").c_str(), &v.volume, 0.0f, 2.0f, "%.2f")) {
 				Audio::SetVolume(v.volume);
 				g_dirty = true;
 			}
-			if (UI::SliderFloat("Room echo", &v.reverb, 0.0f, 0.6f, "%.2f")) {
+			if (UI::SliderFloat(TL("MenuEcho", "Room echo").c_str(), &v.reverb, 0.0f, 0.6f, "%.2f")) {
 				Audio::SetReverb(v.reverb);
 				g_dirty = true;
 			}
-			UI::SeparatorText("Songs");
+			UI::SeparatorText(T("MenuHeadSongs", "Songs"));
 			float speed = v.speed * 100.0f;
-			if (UI::SliderFloat("Song speed", &speed, 50.0f, 200.0f, "%.0f%%")) {
+			if (UI::SliderFloat(TL("MenuSpeed", "Song speed").c_str(), &speed, 50.0f, 200.0f, "%.0f%%")) {
 				v.speed = std::round(speed / 5.0f) * 5.0f / 100.0f;
 				Audio::SetSongSpeed(v.speed);
 				g_dirty = true;
 			}
-			Hint("How fast songs play: 100% is as written.");
-			UI::SeparatorText("Screen");
-			Changed(UI::Checkbox("Show the key guide", &v.showKeyboard));
-			Changed(UI::Checkbox("Hide the interface while playing", &v.hideHud));
-			Hint("Nothing on screen while you play, for immersion. Backspace while playing toggles it.");
-			Changed(UI::SliderFloat("Interface size", &v.uiScale, 0.6f, 1.6f, "%.2f"));
+			Hint(T("MenuSpeedHint", "How fast songs play: 100% is as written."));
+			UI::SeparatorText(T("MenuHeadScreen", "Screen"));
+			Changed(UI::Checkbox(TL("MenuKeyGuide", "Show the key guide").c_str(), &v.showKeyboard));
+			Changed(UI::Checkbox(TL("MenuHideHud", "Hide the interface while playing").c_str(), &v.hideHud));
+			Hint(T("MenuHideHudHint", "Nothing on screen while you play, for immersion. Backspace while playing toggles it."));
+			Changed(UI::SliderFloat(TL("MenuUiSize", "Interface size").c_str(), &v.uiScale, 0.6f, 1.6f, "%.2f"));
 			SaveRow();
 		}
 
 		void __stdcall Crowd()
 		{
 			auto& v = Config::Edit();
-			Changed(UI::SliderFloat("Earshot", &v.listenRange, 300.0f, 4000.0f, "%.0f units"));
-			Hint("How far away people can hear you (70 is about a metre).");
-			Changed(UI::SliderFloat("How often they tip", &v.tipRate, 0.0f, 4.0f, "%.2f"));
-			Changed(UI::SliderFloat("How much they tip", &v.tipSize, 0.0f, 4.0f, "%.2f"));
-			Changed(UI::SliderInt("Most one patron gives", &v.maxTipPerListener, 0, 500, "%d septims"));
-			Hint("Each person tips you once a day.");
-			Changed(UI::SliderFloat("Patience", &v.patience, 0.2f, 3.0f, "%.2f"));
-			Hint("How quickly the room turns on a bad set (higher = quicker).");
-			Changed(UI::Checkbox("Innkeepers throw out bad bards", &v.throwOut));
-			Hint("And won't let you play there again that day.");
-			Changed(UI::SliderFloat("Speech experience", &v.speechXp, 0.0f, 3.0f, "%.2f per septim"));
-			Changed(UI::Checkbox("Listeners clap, dance and react", &v.reactions));
-			Changed(UI::SliderInt("Listeners who come over", &v.maxVisitors, 0, 4));
+			Changed(UI::SliderFloat(TL("MenuEarshot", "Earshot").c_str(), &v.listenRange, 300.0f, 4000.0f, Units("%.0f", T("MenuUnits", "units")).c_str()));
+			Hint(T("MenuEarshotHint", "How far away people can hear you (70 is about a metre)."));
+			Changed(UI::SliderFloat(TL("MenuTipRate", "How often they tip").c_str(), &v.tipRate, 0.0f, 4.0f, "%.2f"));
+			Changed(UI::SliderFloat(TL("MenuTipSize", "How much they tip").c_str(), &v.tipSize, 0.0f, 4.0f, "%.2f"));
+			Changed(UI::SliderInt(TL("MenuMaxTip", "Most one patron gives").c_str(), &v.maxTipPerListener, 0, 500, Units("%d", T("MenuSeptims", "septims")).c_str()));
+			Hint(T("MenuMaxTipHint", "Each person tips you once a day."));
+			Changed(UI::SliderFloat(TL("MenuPatience", "Patience").c_str(), &v.patience, 0.2f, 3.0f, "%.2f"));
+			Hint(T("MenuPatienceHint", "How quickly the room turns on a bad set (higher = quicker)."));
+			Changed(UI::Checkbox(TL("MenuThrowOut", "Innkeepers throw out bad bards").c_str(), &v.throwOut));
+			Hint(T("MenuThrowOutHint", "And won't let you play there again that day."));
+			Changed(UI::SliderFloat(TL("MenuSpeechXp", "Speech experience").c_str(), &v.speechXp, 0.0f, 3.0f, Units("%.2f", T("MenuPerSeptim", "per septim")).c_str()));
+			Changed(UI::Checkbox(TL("MenuReactions", "Listeners clap, dance and react").c_str(), &v.reactions));
+			Changed(UI::SliderInt(TL("MenuVisitors", "Listeners who come over").c_str(), &v.maxVisitors, 0, 4));
 			SaveRow();
 		}
 	}
@@ -197,9 +215,9 @@ namespace Menu
 			spdlog::info("SKSE Menu Framework not installed: settings are in SkyrimSongs.ini");
 			return;
 		}
-		SKSEMenuFramework::SetSection("Skyrim Songs");
-		SKSEMenuFramework::AddSectionItem("Playing", Playing);
-		SKSEMenuFramework::AddSectionItem("The crowd", Crowd);
+		SKSEMenuFramework::SetSection(T("MenuSection", "Skyrim Songs"));
+		SKSEMenuFramework::AddSectionItem(T("MenuPagePlaying", "Playing"), Playing);
+		SKSEMenuFramework::AddSectionItem(T("MenuPageCrowd", "The crowd"), Crowd);
 		spdlog::info("Settings page added to SKSE Menu Framework");
 	}
 }

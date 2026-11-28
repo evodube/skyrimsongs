@@ -61,6 +61,32 @@ please) and a purse.
   hostile gets a warning from the innkeeper, then you're put out through the nearest door that leads outside and
   can't play there again until a day has passed (kept in the SKSE co-save).
 
+## Translating
+
+Every word the mod shows is in `Data\Interface\Translations\SkyrimSongs_ENGLISH.txt`, in Skyrim's usual format
+(the one MCM translations use, so ESP-ESM Translator and xTranslator open it): one `$SkyrimSongs_Key<TAB>Text` line
+each. A translation patch is just that one file, no DLL and no plugin:
+
+1. Copy it to `SkyrimSongs_<LANGUAGE>.txt` in the same folder, named for the game's language (`sLanguage` in
+   Skyrim.ini): `RUSSIAN`, `GERMAN`, `FRENCH`, `ITALIAN`, `SPANISH`, `POLISH`, `CZECH`, `JAPANESE`, `CHINESE`...
+   (or set `[Display] Language` in SkyrimSongs.ini to choose one yourself).
+2. Translate the text after each tab. Keep the key, the tab, and placeholders like `{}`, `{0}`, `{1:.0f}`: names
+   and numbers go there, and you can put them in any order your language needs. `\n` is a new line.
+3. Save as UTF-16 LE (as Skyrim's own translation files are) or UTF-8.
+
+- Lines your file doesn't have stay in English, so an older translation keeps working after an update; the log
+  (`SkyrimSongs.log`) lists any that are missing.
+- `Npc...`, `Place...` and `Item...` lines are names the mod looks for in the game (the College's teachers, the
+  Bards College, Finn's Lute): write them as the game calls them in your language (`Place`/`Item` in lower case).
+- Letters: the interface is drawn with every character your file uses. Where its fonts lack them, Windows' own
+  fill in (Segoe UI for Cyrillic and Greek, Yu Gothic, Malgun Gothic or Microsoft JhengHei/YaHei for Japanese,
+  Korean and Chinese). For a font of your own, put the .ttf in `Data\SKSE\Plugins\SkyrimSongs\Fonts` and name
+  it on the `$SkyrimSongs_Font` line.
+- Song titles come from the MIDI files' names. The settings page in SKSE Menu Framework uses that mod's own font.
+
+For developers: text goes in the code as `T("Key", "English")` (`TF` with values, `TL` for a widget label), and
+`python tools/extract_strings.py` rewrites the English file; CI fails if it's out of date.
+
 ## How it's built
 
 - `src/music`: plain C++ with no game code, tested on Linux in CI (`tests/music_test.cpp`):

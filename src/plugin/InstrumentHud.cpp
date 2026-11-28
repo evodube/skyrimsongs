@@ -4,6 +4,7 @@
 
 #include "../music/Keymap.h"
 #include "../music/Songs.h"
+#include "../music/Text.h"
 
 #include <algorithm>
 #include <cmath>
@@ -430,7 +431,7 @@ namespace InstrumentHud
 			}
 		}
 		// the registers, and the breath gauge
-		static constexpr const char* kReg[3] = { "low", "mid", "high" };
+		const char* kReg[3] = { music::Tr("RegisterLow", "low"), music::Tr("RegisterMid", "mid"), music::Tr("RegisterHigh", "high") };
 		const float ly = yc + r + 20.0f * s;
 		for (int row = 2; row >= 0; --row) {
 			const bool on = last && breath > 0.0f && lastCell.row == row;

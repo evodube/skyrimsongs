@@ -20,7 +20,7 @@ add_commonlibsse_plugin(${PROJECT_NAME}
     AUTHOR "evodube"
     USE_ADDRESS_LIBRARY
     SOURCES src/plugin/main.cpp src/plugin/Config.cpp src/plugin/Overlay.cpp src/plugin/Audio.cpp src/plugin/MidiIn.cpp
-            src/plugin/Performance.cpp src/plugin/Menu.cpp src/plugin/InstrumentHud.cpp ${MUSIC_SOURCES})
+            src/plugin/Performance.cpp src/plugin/Menu.cpp src/plugin/InstrumentHud.cpp src/plugin/Lang.cpp ${MUSIC_SOURCES})
 
 target_include_directories(${PROJECT_NAME} PRIVATE src/plugin extern/SKSEMenuFramework)
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/plugin/PCH.h)

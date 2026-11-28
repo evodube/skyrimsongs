@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: The English translation file matches the code
+        run: python3 tools/extract_strings.py --check
       - name: Synth, MIDI, judging and crowd tests
         run: |
           mkdir -p build
@@ -138,6 +140,8 @@ jobs:
           Copy-Item assets/songs/* "$p/SkyrimSongs/Songs/"
           Copy-Item LICENSE.txt "$p/SkyrimSongs/"
           Copy-Item assets/download/README.txt "$p/SkyrimSongs/"
+          New-Item -ItemType Directory -Force -Path "$out/Data/Interface/Translations" | Out-Null
+          Copy-Item assets/translations/* "$out/Data/Interface/Translations/"
           Get-ChildItem -Recurse $out | Format-Table FullName, Length
 
       - name: Publish package to dist branch

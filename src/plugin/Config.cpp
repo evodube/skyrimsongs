@@ -110,6 +110,7 @@ namespace Config
 		v.showKeyboard = Bool("Play", "ShowKeyboard", v.showKeyboard);
 		v.hideHud = Bool("Play", "HideHud", v.hideHud);
 		v.upscalerFix = Bool("Display", "UpscalerFix", v.upscalerFix);
+		v.language = Str("Display", "Language", "");
 		v.songSort = std::clamp(Int("Play", "SongSort", v.songSort), 0, 4);
 		v.bookX = std::clamp(Float("Play", "SongbookX", v.bookX), 0.0f, 1.0f);
 		v.bookY = std::clamp(Float("Play", "SongbookY", v.bookY), 0.0f, 1.0f);
